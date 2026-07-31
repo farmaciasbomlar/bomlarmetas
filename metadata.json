@@ -1,0 +1,6 @@
+{
+  "name": "Bom Lar Resultados",
+  "description": "Gestão de metas e performance de vendas para Bom Lar Resultados com leitura OCR, cálculos de ritmo e análise inteligente.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
