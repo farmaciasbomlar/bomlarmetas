@@ -50,7 +50,11 @@ app.post('/api/ocr-dual-prints', async (req, res) => {
         },
       });
       parts.push({
-        text: 'IMAGEM 1: PLANILHA DE METAS INDIVIDUAIS DOS VENDEDORES. Extraia o código do vendedor, o nome completo do vendedor e o valor da meta estipulada em R$ para o mês.',
+        text: `IMAGEM 1: PLANILHA DE METAS INDIVIDUAIS E TICKET MÉDIO DA FARMÁCIA. Extraia obrigatoriamente:
+1) "sellerTicketGoal": O valor numérico de "Ticket Médio vendedor" (meta de ticket por vendedor em R$, ex: 61,00 -> 61.00).
+2) "storeTicketGoal": O valor numérico de "Ticket Médio loja" (meta de ticket da loja em R$, ex: 57,00 -> 57.00).
+3) A lista de vendedores com código, nome e meta estipulada em R$ para o mês.
+4) A meta total da loja se visível.`,
       });
     }
 
@@ -72,9 +76,12 @@ app.post('/api/ocr-dual-prints', async (req, res) => {
 1. Formato numérico brasileiro: O ponto (.) é separador de milhar e a vírgula (,) é o decimal (ex: 1.030,05 = 1030.05). Converta rigorosamente para números decimais JS (floats).
 2. Códigos: Extraia os códigos limpos (ex: "0727" ou "727").
 3. Venda Líquida: É o valor de venda realizada para cada vendedor/colaborador.
-4. Para a Planilha de Metas, inclua na lista de metas todos os vendedores com seus códigos e valores de meta em R$.
-5. Para o Desempenho, inclua todos os colaboradores encontrados no relatório com sua Venda Líquida.
-6. Retorne rigorosamente no JSON formatado.`,
+4. Para a Planilha de Metas, extraia SEPARADAMENTE os dois valores de ticket médio:
+   - "sellerTicketGoal": O valor da coluna/célula "Ticket Médio vendedor" (ex: R$ 61,00 -> 61.00).
+   - "storeTicketGoal": O valor da coluna/célula "Ticket Médio loja" (ex: 57,00 -> 57.00).
+5. Inclua na lista de metas todos os vendedores com seus códigos e valores de meta em R$.
+6. Para o Desempenho, inclua todos os colaboradores encontrados no relatório com sua Venda Líquida.
+7. Retorne rigorosamente no JSON formatado.`,
     });
 
     const systemInstruction = `Você é um sistema especialista em OCR e análise comercial de farmácias e varejo. Extraia com precisão absoluta dados das planilhas e relatórios de vendas.`;
@@ -88,6 +95,14 @@ app.post('/api/ocr-dual-prints', async (req, res) => {
         responseSchema: {
           type: Type.OBJECT,
           properties: {
+            sellerTicketGoal: {
+              type: Type.NUMBER,
+              description: 'Meta de Ticket Médio do Vendedor em R$ (ex: 61.00) extraída de "Ticket Médio vendedor"',
+            },
+            storeTicketGoal: {
+              type: Type.NUMBER,
+              description: 'Meta de Ticket Médio da Loja em R$ (ex: 57.00) extraída de "Ticket Médio loja"',
+            },
             goalsSheet: {
               type: Type.ARRAY,
               description: 'Metas individuais por vendedor extraídas do print da planilha',

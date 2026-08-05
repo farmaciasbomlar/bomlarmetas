@@ -58,6 +58,8 @@ export interface DualPrintRow {
 }
 
 export interface DualPrintAnalysis {
+  sellerTicketGoal: number; // Meta Ticket Médio Vendedor
+  storeTicketGoal: number; // Meta Ticket Médio Loja
   sellers: DualPrintRow[];
   outros: {
     count: number;
@@ -330,12 +332,17 @@ export const ResultsEntryTab: React.FC<ResultsEntryTabProps> = ({
         }
       });
 
-      // Calculate store totals
+      // Calculate store totals and extracted ticket goals
       const totalSellersNetSales = processedSellers.reduce((acc, s) => acc + s.netSales, 0);
       const totalStoreNetSales = Number(storeTotal.netSales) || (totalSellersNetSales + outrosNetSales);
       const totalStoreGoal = goalsSheet.reduce((acc, g) => acc + (Number(g.targetAmount) || 0), 0);
 
+      const sellerTicketGoal = Number(rawData.sellerTicketGoal) || 0;
+      const storeTicketGoal = Number(rawData.storeTicketGoal) || 0;
+
       const dualAnalysis: DualPrintAnalysis = {
+        sellerTicketGoal,
+        storeTicketGoal,
         sellers: processedSellers,
         outros: {
           count: outrosList.length,
@@ -373,7 +380,7 @@ export const ResultsEntryTab: React.FC<ResultsEntryTabProps> = ({
     const elapsedDays = Math.max(1, elapsedDaysInput);
     const totalBusinessDays = Math.max(elapsedDays, totalBusinessDaysInput);
 
-    // 1. Create NEW Collaborators list from zero
+    // 1. Create NEW Collaborators list from zero with the extracted sellerTicketGoal
     const newCollaborators: Collaborator[] = analysisResult.sellers.map((s) => ({
       id: `seller-${s.code}`,
       code: s.code,
@@ -384,7 +391,7 @@ export const ResultsEntryTab: React.FC<ResultsEntryTabProps> = ({
         analysisResult.storeTotal.totalGoal > 0
           ? (s.targetAmount / analysisResult.storeTotal.totalGoal) * 100
           : 0,
-      ticketGoal: 54.0,
+      ticketGoal: analysisResult.sellerTicketGoal || 0,
     }));
 
     // If OUTROS exists, add OUTROS entry to collaborators
@@ -447,6 +454,8 @@ export const ResultsEntryTab: React.FC<ResultsEntryTabProps> = ({
       setGoalConfig({
         ...goalConfig,
         totalGoal: analysisResult.storeTotal.totalGoal,
+        defaultSellerTicketGoal: analysisResult.sellerTicketGoal || 0,
+        storeTicketGoal: analysisResult.storeTicketGoal || 0,
         elapsedDays: elapsedDays,
         totalBusinessDays: totalBusinessDays,
       });
@@ -1080,6 +1089,96 @@ export const ResultsEntryTab: React.FC<ResultsEntryTabProps> = ({
                 })()}
               </div>
             </div>
+
+            {/* SEPARATE TICKET MÉDIO GOALS SECTION */}
+            <div className="mt-6 p-4 rounded-2xl bg-[#1a1b20] border border-white/10 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Target className="w-4 h-4 text-[#00b5ac]" />
+                  <span className="text-xs font-bold text-white uppercase tracking-wider">
+                    Metas de Ticket Médio Lidas no Print
+                  </span>
+                </div>
+                <span className="text-[10px] text-gray-400">
+                  Reescritas e isoladas a cada novo print enviado
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Field 1: Ticket Médio Meta (Vendedor) */}
+                <div className="p-3.5 rounded-xl bg-[#121316] border border-white/10 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-gray-200">
+                      Ticket Médio Meta (Vendedor)
+                    </label>
+                    <span className="text-[10px] bg-[#00b5ac]/20 text-[#00b5ac] px-2 py-0.5 rounded font-mono font-bold border border-[#00b5ac]/30">
+                      Meta por Vendedor
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs font-bold text-gray-400 font-mono">R$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={analysisResult.sellerTicketGoal || 0}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setAnalysisResult({
+                          ...analysisResult,
+                          sellerTicketGoal: val,
+                        });
+                      }}
+                      className="w-full bg-[#1e2026] border border-white/15 rounded-lg px-3 py-1.5 text-sm font-bold text-[#00b5ac] font-mono focus:border-[#00b5ac] focus:outline-none"
+                    />
+                  </div>
+                  <p className="text-[10px] text-gray-400">
+                    Comparado individualmente com o ticket realizado por cada vendedor.
+                  </p>
+                </div>
+
+                {/* Field 2: Ticket Médio Meta (Loja) */}
+                <div className="p-3.5 rounded-xl bg-[#121316] border border-white/10 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-gray-200">
+                      Ticket Médio Meta (Loja)
+                    </label>
+                    <span className="text-[10px] bg-[#f36e21]/20 text-[#f36e21] px-2 py-0.5 rounded font-mono font-bold border border-[#f36e21]/30">
+                      Meta Geral Loja
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs font-bold text-gray-400 font-mono">R$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={analysisResult.storeTicketGoal || 0}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setAnalysisResult({
+                          ...analysisResult,
+                          storeTicketGoal: val,
+                        });
+                      }}
+                      className="w-full bg-[#1e2026] border border-white/15 rounded-lg px-3 py-1.5 text-sm font-bold text-[#f36e21] font-mono focus:border-[#f36e21] focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] pt-0.5">
+                    <span className="text-gray-400">
+                      Realizado Loja: <strong className="text-white font-mono">{formatCurrency(analysisResult.storeTotal.ticketMedio)}</strong>
+                    </span>
+                    {analysisResult.storeTotal.ticketMedio >= (analysisResult.storeTicketGoal || 0) ? (
+                      <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                        ✓ Loja Atingiu Meta Ticket
+                      </span>
+                    ) : (
+                      <span className="text-rose-400 font-bold bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
+                        ⚠ Loja Abaixo da Meta Ticket
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* DETAILED TABLE BY SELLER */}
@@ -1105,7 +1204,10 @@ export const ResultsEntryTab: React.FC<ResultsEntryTabProps> = ({
                     <th className="py-3 px-3">Vendedor</th>
                     <th className="py-3 px-3 font-semibold text-[#00b5ac]">Venda Líquida</th>
                     <th className="py-3 px-3 font-semibold text-white">Meta Individual</th>
-                    <th className="py-3 px-3 text-center">% Atingido</th>
+                    <th className="py-3 px-3 text-center">% Venda</th>
+                    <th className="py-3 px-3 text-amber-300">Ticket Realizado</th>
+                    <th className="py-3 px-3 text-gray-300">Ticket Meta (Vendedor)</th>
+                    <th className="py-3 px-3 text-center">Status Ticket</th>
                     <th className="py-3 px-3 text-sky-400">Projeção Fechamento</th>
                     <th className="py-3 px-3 text-[#f36e21]">Falta p/ Meta</th>
                     <th className="py-3 px-3 text-center">Ritmo</th>
@@ -1115,6 +1217,10 @@ export const ResultsEntryTab: React.FC<ResultsEntryTabProps> = ({
                   {analysisResult.sellers.map((seller) => {
                     const { dailyPace, projectedSales, remainingGoal, percentAchieved, isOnTrack } =
                       calculatePaceAndProjection(seller.netSales, seller.targetAmount);
+
+                    const sellerTicketMedio = seller.ticketMedio || 0;
+                    const sellerTicketGoal = analysisResult.sellerTicketGoal || 0;
+                    const isTicketAchieved = sellerTicketGoal > 0 ? sellerTicketMedio >= sellerTicketGoal : true;
 
                     return (
                       <tr key={seller.code} className="hover:bg-white/5 transition-colors">
@@ -1138,6 +1244,23 @@ export const ResultsEntryTab: React.FC<ResultsEntryTabProps> = ({
                           >
                             {percentAchieved.toFixed(1)}%
                           </span>
+                        </td>
+                        <td className="py-3 px-3 font-bold text-amber-300">
+                          {formatCurrency(sellerTicketMedio)}
+                        </td>
+                        <td className="py-3 px-3 text-gray-300">
+                          {formatCurrency(sellerTicketGoal)}
+                        </td>
+                        <td className="py-3 px-3 text-center font-sans">
+                          {isTicketAchieved ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                              🟢 No Alvo
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                              🔴 Abaixo
+                            </span>
+                          )}
                         </td>
                         <td className="py-3 px-3 text-sky-400 font-bold">
                           {formatCurrency(projectedSales)}
@@ -1171,6 +1294,11 @@ export const ResultsEntryTab: React.FC<ResultsEntryTabProps> = ({
                         {formatCurrency(analysisResult.outros.totalNetSales)}
                       </td>
                       <td className="py-3.5 px-3 text-gray-400">N/A (R$ 0,00)</td>
+                      <td className="py-3.5 px-3 text-center text-gray-400">—</td>
+                      <td className="py-3.5 px-3 font-bold text-amber-400">
+                        {formatCurrency(analysisResult.outros.ticketMedio)}
+                      </td>
+                      <td className="py-3.5 px-3 text-gray-400">N/A</td>
                       <td className="py-3.5 px-3 text-center text-gray-400">—</td>
                       <td className="py-3.5 px-3 text-sky-400 font-bold">
                         {formatCurrency((analysisResult.outros.totalNetSales / elapsedDays) * totalBusinessDays)}
