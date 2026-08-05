@@ -58,8 +58,15 @@ export const AIAnalysisTab: React.FC<AIAnalysisTabProps> = ({
       });
 
       if (!response.ok) {
-        const errJson = await response.json().catch(() => ({}));
-        throw new Error(errJson.error || 'Erro ao gerar análise inteligente via Gemini.');
+        let errorMsg = 'Erro ao gerar análise inteligente via Gemini.';
+        try {
+          const errText = await response.text();
+          const errJson = JSON.parse(errText);
+          errorMsg = errJson.error || errJson.details || errorMsg;
+        } catch {
+          errorMsg = `Erro no servidor (${response.status} ${response.statusText}). Verifique se a chave de API está configurada.`;
+        }
+        throw new Error(errorMsg);
       }
 
       const data: AIAnalysisResponse = await response.json();

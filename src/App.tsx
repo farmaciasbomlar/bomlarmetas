@@ -130,10 +130,14 @@ export default function App() {
         {activeTab === 'entry' && (
           <ResultsEntryTab
             collaborators={collaborators}
+            setCollaborators={setCollaborators}
+            goalConfig={goalConfig}
+            setGoalConfig={setGoalConfig}
             individualResults={individualResults}
             setIndividualResults={setIndividualResults}
             storeResult={storeResult}
             setStoreResult={setStoreResult}
+            setAiAnalysis={setAiAnalysis}
             onAfterConfirmResults={() => setActiveTab('dashboard')}
           />
         )}

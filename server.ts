@@ -29,6 +29,128 @@ function getGenAI() {
 // ----------------------------------------------------
 // API 1: OCR Report Reader (Imagem 2 -> Structured Data)
 // ----------------------------------------------------
+app.post('/api/ocr-dual-prints', async (req, res) => {
+  try {
+    const { goalsImageBase64, performanceImageBase64 } = req.body;
+
+    if (!goalsImageBase64 && !performanceImageBase64) {
+      return res.status(400).json({ error: 'Nenhuma imagem foi fornecida para análise.' });
+    }
+
+    const ai = getGenAI();
+
+    const parts: any[] = [];
+
+    if (goalsImageBase64) {
+      const cleanGoals = goalsImageBase64.replace(/^data:image\/\w+;base64,/, '');
+      parts.push({
+        inlineData: {
+          data: cleanGoals,
+          mimeType: 'image/jpeg',
+        },
+      });
+      parts.push({
+        text: 'IMAGEM 1: PLANILHA DE METAS INDIVIDUAIS DOS VENDEDORES. Extraia o código do vendedor, o nome completo do vendedor e o valor da meta estipulada em R$ para o mês.',
+      });
+    }
+
+    if (performanceImageBase64) {
+      const cleanPerf = performanceImageBase64.replace(/^data:image\/\w+;base64,/, '');
+      parts.push({
+        inlineData: {
+          data: cleanPerf,
+          mimeType: 'image/jpeg',
+        },
+      });
+      parts.push({
+        text: 'IMAGEM 2: RELATÓRIO DE DESEMPENHO POR COLABORADOR (RELATÓRIO 802 OU SIMILAR). Extraia o código do colaborador, nome completo, Venda Bruta (R$), Desconto (R$), Venda Líquida (R$), Ticket Médio (R$), Clientes, Itens, Unidades e o Total Geral da Loja se disponível.',
+      });
+    }
+
+    parts.push({
+      text: `REGRAS E INSTRUÇÕES CRÍTICAS DE EXTRAÇÃO:
+1. Formato numérico brasileiro: O ponto (.) é separador de milhar e a vírgula (,) é o decimal (ex: 1.030,05 = 1030.05). Converta rigorosamente para números decimais JS (floats).
+2. Códigos: Extraia os códigos limpos (ex: "0727" ou "727").
+3. Venda Líquida: É o valor de venda realizada para cada vendedor/colaborador.
+4. Para a Planilha de Metas, inclua na lista de metas todos os vendedores com seus códigos e valores de meta em R$.
+5. Para o Desempenho, inclua todos os colaboradores encontrados no relatório com sua Venda Líquida.
+6. Retorne rigorosamente no JSON formatado.`,
+    });
+
+    const systemInstruction = `Você é um sistema especialista em OCR e análise comercial de farmácias e varejo. Extraia com precisão absoluta dados das planilhas e relatórios de vendas.`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.6-flash',
+      contents: { parts },
+      config: {
+        systemInstruction,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            goalsSheet: {
+              type: Type.ARRAY,
+              description: 'Metas individuais por vendedor extraídas do print da planilha',
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  code: { type: Type.STRING, description: 'Código do vendedor (ex: 0727)' },
+                  name: { type: Type.STRING, description: 'Nome do vendedor' },
+                  targetAmount: { type: Type.NUMBER, description: 'Meta em R$' },
+                },
+                required: ['code', 'name', 'targetAmount'],
+              },
+            },
+            performanceSheet: {
+              type: Type.ARRAY,
+              description: 'Resultados de desempenho por colaborador extraídos do print de desempenho',
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  code: { type: Type.STRING, description: 'Código do colaborador (ex: 727)' },
+                  name: { type: Type.STRING, description: 'Nome do colaborador' },
+                  grossSales: { type: Type.NUMBER },
+                  discountAmount: { type: Type.NUMBER },
+                  discountPercent: { type: Type.NUMBER },
+                  netSales: { type: Type.NUMBER, description: 'Venda Líquida em R$' },
+                  items: { type: Type.NUMBER },
+                  units: { type: Type.NUMBER },
+                  clients: { type: Type.NUMBER },
+                  ticketMedio: { type: Type.NUMBER },
+                },
+                required: ['code', 'name', 'netSales'],
+              },
+            },
+            storeTotal: {
+              type: Type.OBJECT,
+              properties: {
+                grossSales: { type: Type.NUMBER },
+                discountAmount: { type: Type.NUMBER },
+                discountPercent: { type: Type.NUMBER },
+                netSales: { type: Type.NUMBER },
+                items: { type: Type.NUMBER },
+                units: { type: Type.NUMBER },
+                clients: { type: Type.NUMBER },
+                ticketMedio: { type: Type.NUMBER },
+              },
+            },
+          },
+          required: ['goalsSheet', 'performanceSheet'],
+        },
+      },
+    });
+
+    const parsedJson = JSON.parse(response.text || '{}');
+    return res.json(parsedJson);
+  } catch (error: any) {
+    console.error('Erro na API OCR Dual Prints:', error);
+    return res.status(500).json({
+      error: 'Falha ao processar imagens via OCR Gemini.',
+      details: error.message,
+    });
+  }
+});
+
 app.post('/api/ocr-report', async (req, res) => {
   try {
     const { imageBase64, mimeType = 'image/jpeg' } = req.body;

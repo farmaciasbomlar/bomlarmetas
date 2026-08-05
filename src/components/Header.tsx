@@ -29,11 +29,11 @@ export const Header: React.FC<HeaderProps> = ({
             <img
               src="https://i.ibb.co/LdKcYjTq/01-LOGO-BOM-LAR-2024-sem-Tarja-PRINCIPAL.png"
               alt="Bom Lar Resultados"
-              className="h-10 w-auto object-contain max-w-[140px]"
+              className="w-[150px] h-[120px] bg-[#151414] object-contain"
             />
             <div>
               <div className="flex items-center space-x-2">
-                <span className="text-lg font-bold tracking-tight text-white">
+                <span className="text-[12px] font-bold tracking-tight text-white">
                   Bom Lar <span className="text-[#00b5ac]">Resultados</span>
                 </span>
                 <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider rounded-full bg-[#f36e21]/20 text-[#f36e21] border border-[#f36e21]/30">
