@@ -21,6 +21,7 @@ import {
   XCircle,
   MessageSquare,
   FileText,
+  RotateCcw,
 } from 'lucide-react';
 
 interface SellerPresentationCardProps {
@@ -96,7 +97,107 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
   const normalizedPercent = Math.min(100, Math.max(0, metrics.percentAchieved));
   const strokeDashoffset = strokeDasharray - (strokeDasharray * normalizedPercent) / 100;
 
+  // Helper to parse numeric values from user input
+  const parseFormattedNumber = (input: string): number | null => {
+    if (!input) return null;
+    let cleaned = input.replace(/[R$\s]/g, '');
+    if (cleaned.includes('.') && cleaned.includes(',')) {
+      cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+    } else if (cleaned.includes(',')) {
+      cleaned = cleaned.replace(',', '.');
+    }
+    const val = parseFloat(cleaned);
+    return isNaN(val) ? null : val;
+  };
+
+  // Session-based manual overrides for Daily Required Goal and Ticket Goal
+  const [manualDailyRequiredMap, setManualDailyRequiredMap] = useState<Record<string, number | null>>({});
+  const [manualTicketGoalMap, setManualTicketGoalMap] = useState<Record<string, number | null>>({});
+
+  const [editingDailySellerId, setEditingDailySellerId] = useState<string | null>(null);
+  const [editingDailyValue, setEditingDailyValue] = useState<string>('');
+
+  const [editingTicketSellerId, setEditingTicketSellerId] = useState<string | null>(null);
+  const [editingTicketValue, setEditingTicketValue] = useState<string>('');
+
+  const isDailyOverridden =
+    manualDailyRequiredMap[currentSeller.id] !== undefined &&
+    manualDailyRequiredMap[currentSeller.id] !== null;
+  const effectiveDailyRequiredSales = isDailyOverridden
+    ? manualDailyRequiredMap[currentSeller.id]!
+    : metrics.dailyRequiredSales;
+
+  const isTicketOverridden =
+    manualTicketGoalMap[currentSeller.id] !== undefined &&
+    manualTicketGoalMap[currentSeller.id] !== null;
+  const effectiveTicketGoal = isTicketOverridden
+    ? manualTicketGoalMap[currentSeller.id]!
+    : metrics.ticketGoal;
+
+  const handleSaveDailyInput = () => {
+    if (!editingDailySellerId) return;
+    const num = parseFormattedNumber(editingDailyValue);
+    if (num !== null && num >= 0) {
+      setManualDailyRequiredMap((prev) => ({ ...prev, [editingDailySellerId]: num }));
+    }
+    setEditingDailySellerId(null);
+  };
+
+  const handleSaveTicketInput = () => {
+    if (!editingTicketSellerId) return;
+    const num = parseFormattedNumber(editingTicketValue);
+    if (num !== null && num >= 0) {
+      setManualTicketGoalMap((prev) => ({ ...prev, [editingTicketSellerId]: num }));
+    }
+    setEditingTicketSellerId(null);
+  };
+
   const [exportError, setExportError] = useState<string | null>(null);
+
+  // Local state for manager action plan notes per seller
+  const [actionNotesMap, setActionNotesMap] = useState<Record<string, string>>(() => {
+    try {
+      const saved = localStorage.getItem('pharmametas_action_plan_notes');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Get current seller note from map or localStorage
+  const getSellerNote = (seller: Collaborator): string => {
+    const keyByCode = seller.code ? seller.code : '';
+    const keyById = seller.id ? seller.id : '';
+
+    if (keyByCode && actionNotesMap[keyByCode] !== undefined) return actionNotesMap[keyByCode];
+    if (keyById && actionNotesMap[keyById] !== undefined) return actionNotesMap[keyById];
+
+    // Try direct localStorage backup
+    if (keyByCode) {
+      const saved = localStorage.getItem(`action_plan_${keyByCode}`);
+      if (saved) return saved;
+    }
+    if (keyById) {
+      const saved = localStorage.getItem(`action_plan_${keyById}`);
+      if (saved) return saved;
+    }
+
+    return '';
+  };
+
+  const currentNote = getSellerNote(currentSeller);
+
+  const handleNoteChange = (text: string) => {
+    const keyToUse = currentSeller.code || currentSeller.id;
+    const updatedMap = { ...actionNotesMap, [keyToUse]: text };
+    setActionNotesMap(updatedMap);
+    try {
+      localStorage.setItem('pharmametas_action_plan_notes', JSON.stringify(updatedMap));
+      localStorage.setItem(`action_plan_${keyToUse}`, text);
+    } catch (err) {
+      console.error('Erro ao salvar anotação do plano de ação:', err);
+    }
+  };
 
   // Export Card to PDF function using html-to-image & jsPDF
   const handleExportPDF = async () => {
@@ -270,12 +371,64 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
                   <Flame className="w-4 h-4" />
                 </div>
               </div>
-              <p className="text-3xl font-black text-white font-mono">
-                {formatCurrency(metrics.dailyRequiredSales)}
+
+              <div>
+                {editingDailySellerId === currentSeller.id && !isExportingPDF ? (
+                  <div className="flex items-center space-x-2 my-1">
+                    <span className="text-2xl font-black text-white font-mono">R$</span>
+                    <input
+                      type="text"
+                      value={editingDailyValue}
+                      onChange={(e) => setEditingDailyValue(e.target.value)}
+                      onBlur={handleSaveDailyInput}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveDailyInput();
+                        if (e.key === 'Escape') setEditingDailySellerId(null);
+                      }}
+                      autoFocus
+                      className="bg-[#141519] border border-[#f36e21] rounded-xl px-3 py-1 text-2xl font-black text-white font-mono focus:outline-none w-full max-w-[220px]"
+                      placeholder="0,00"
+                    />
+                  </div>
+                ) : (
+                  <p
+                    onClick={() => {
+                      if (!isExportingPDF) {
+                        setEditingDailySellerId(currentSeller.id);
+                        setEditingDailyValue(
+                          effectiveDailyRequiredSales > 0
+                            ? effectiveDailyRequiredSales.toFixed(2).replace('.', ',')
+                            : ''
+                        );
+                      }
+                    }}
+                    className={`text-3xl font-black text-white font-mono inline-block ${
+                      !isExportingPDF ? 'cursor-pointer hover:text-[#f36e21] transition-colors' : ''
+                    }`}
+                    title={!isExportingPDF ? 'Clique para editar a meta diária' : undefined}
+                  >
+                    {formatCurrency(effectiveDailyRequiredSales)}
+                  </p>
+                )}
+
                 <span className="text-xs font-normal text-gray-300 block font-sans mt-0.5">
                   / dia nos {metrics.daysRemaining} dias restantes do mês
                 </span>
-              </p>
+
+                {isDailyOverridden && !isExportingPDF && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManualDailyRequiredMap((prev) => ({ ...prev, [currentSeller.id]: null }));
+                      setEditingDailySellerId(null);
+                    }}
+                    className="text-[11px] text-[#00b5ac] hover:text-[#008d86] font-medium underline mt-2 flex items-center space-x-1 transition-colors cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Voltar ao cálculo automático</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Ticket Médio Meter */}
@@ -288,19 +441,70 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
                   <Target className="w-4 h-4" />
                 </div>
               </div>
-              <div className="flex items-baseline justify-between">
+              <div className="flex items-baseline justify-between flex-wrap gap-2">
                 <p className="text-2xl font-extrabold text-white font-mono">
                   {formatCurrency(metrics.ticketMedio)}
                 </p>
-                <span className="text-xs font-mono text-gray-400">
-                  Meta: {formatCurrency(metrics.ticketGoal)}
-                </span>
+
+                <div className="flex flex-col items-end">
+                  {editingTicketSellerId === currentSeller.id && !isExportingPDF ? (
+                    <div className="flex items-center space-x-1">
+                      <span className="text-xs font-mono text-gray-400">Meta: R$</span>
+                      <input
+                        type="text"
+                        value={editingTicketValue}
+                        onChange={(e) => setEditingTicketValue(e.target.value)}
+                        onBlur={handleSaveTicketInput}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveTicketInput();
+                          if (e.key === 'Escape') setEditingTicketSellerId(null);
+                        }}
+                        autoFocus
+                        className="bg-[#141519] border border-[#00b5ac] rounded-lg px-2 py-0.5 text-xs font-mono font-bold text-white focus:outline-none w-24"
+                        placeholder="0,00"
+                      />
+                    </div>
+                  ) : (
+                    <span
+                      onClick={() => {
+                        if (!isExportingPDF) {
+                          setEditingTicketSellerId(currentSeller.id);
+                          setEditingTicketValue(
+                            effectiveTicketGoal > 0
+                              ? effectiveTicketGoal.toFixed(2).replace('.', ',')
+                              : ''
+                          );
+                        }
+                      }}
+                      className={`text-xs font-mono text-gray-400 ${
+                        !isExportingPDF ? 'cursor-pointer hover:text-[#00b5ac] transition-colors' : ''
+                      }`}
+                      title={!isExportingPDF ? 'Clique para editar a meta de ticket médio' : undefined}
+                    >
+                      Meta: <span className="font-bold text-white">{formatCurrency(effectiveTicketGoal)}</span>
+                    </span>
+                  )}
+
+                  {isTicketOverridden && !isExportingPDF && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setManualTicketGoalMap((prev) => ({ ...prev, [currentSeller.id]: null }));
+                        setEditingTicketSellerId(null);
+                      }}
+                      className="text-[10px] text-[#00b5ac] hover:text-[#008d86] font-medium underline mt-1 flex items-center space-x-1 transition-colors cursor-pointer"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Voltar ao cálculo automático</span>
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="w-full h-2 bg-[#23252d] rounded-full overflow-hidden mt-3">
                 <div
-                  className="h-full bg-[#00b5ac] rounded-full"
+                  className="h-full bg-[#00b5ac] rounded-full transition-all duration-300"
                   style={{
-                    width: `${Math.min(100, (metrics.ticketMedio / (metrics.ticketGoal || 1)) * 100)}%`,
+                    width: `${Math.min(100, (metrics.ticketMedio / (effectiveTicketGoal || 1)) * 100)}%`,
                   }}
                 />
               </div>
@@ -332,8 +536,8 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
           </div>
         </div>
 
-        {/* Manager AI Script & Tip Box */}
-        {sellerAI && (
+        {/* Manager AI Script & Tip Box (Omitted in PDF export) */}
+        {sellerAI && !isExportingPDF && (
           <div className="relative z-10 bg-gradient-to-r from-[#00b5ac]/10 to-purple-500/10 border border-[#00b5ac]/30 rounded-3xl p-6 space-y-3">
             <div className="flex items-center space-x-2">
               <Sparkles className="w-5 h-5 text-[#00b5ac]" />
@@ -344,6 +548,63 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
             <p className="text-xs text-gray-200 leading-relaxed italic bg-[#121316]/60 p-4 rounded-2xl border border-white/5">
               "{sellerAI.talkingPointScript}"
             </p>
+          </div>
+        )}
+
+        {/* PLANO DE AÇÃO — COMBINADO COM O VENDEDOR */}
+        {(!isExportingPDF || currentNote.trim().length > 0) && (
+          <div className="relative z-10 bg-[#121316]/90 border border-[#00b5ac] rounded-3xl p-6 space-y-3 shadow-xl w-full max-w-full overflow-hidden box-border">
+            <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
+              <div className="flex items-center space-x-2 min-w-0">
+                <FileText className="w-5 h-5 text-[#00b5ac] shrink-0" />
+                <h3 className="text-xs font-bold text-[#00b5ac] uppercase tracking-wider">
+                  📝 PLANO DE AÇÃO — COMBINADO COM O VENDEDOR
+                </h3>
+              </div>
+              <span className="text-[10px] bg-[#f36e21]/20 text-[#f36e21] px-2 py-0.5 rounded font-mono font-bold border border-[#f36e21]/30 shrink-0">
+                Anotações do Gerente
+              </span>
+            </div>
+
+            {isExportingPDF ? (
+              <div
+                className="bg-[#1a1c22] text-white text-xs leading-relaxed p-4 rounded-2xl border border-white/10 font-sans w-full max-w-full box-border"
+                style={{
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  overflowWrap: 'anywhere',
+                }}
+              >
+                {currentNote}
+              </div>
+            ) : (
+              <div className="space-y-2 w-full max-w-full box-border">
+                <textarea
+                  value={currentNote}
+                  onChange={(e) => handleNoteChange(e.target.value)}
+                  placeholder="Anote aqui o que foi conversado e combinado com o(a) vendedor(a): melhorias de comportamento, metas de rotação, foco para os próximos dias..."
+                  rows={4}
+                  className="w-full bg-[#1a1c22] border border-white/15 rounded-2xl p-4 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#f36e21] transition-colors leading-relaxed font-sans resize-y min-h-[110px] box-border"
+                  style={{
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    overflowWrap: 'anywhere',
+                  }}
+                />
+                <div className="flex items-center justify-between text-[10px] text-gray-400 px-1">
+                  <span>
+                    Vincular e salvar para:{' '}
+                    <strong className="text-white">
+                      {currentSeller.code ? `[${currentSeller.code}] ` : ''}
+                      {currentSeller.name}
+                    </strong>
+                  </span>
+                  <span className="text-[#00b5ac] font-medium">
+                    {currentNote.trim().length > 0 ? '✓ Salvo localmente' : 'Digite para salvar'}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

@@ -70,7 +70,21 @@ export async function exportElementToPdf(
     const pageHeight = 297; // A4 height in mm
     const imgHeight = (img.height * imgWidth) / img.width;
 
-    pdf.addImage(dataUrl, 'PNG', 0, 0, imgWidth, Math.min(imgHeight, pageHeight));
+    let heightLeft = imgHeight;
+    let position = 0;
+
+    // First page
+    pdf.addImage(dataUrl, 'PNG', 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+
+    // Add subsequent pages if content exceeds single page height
+    while (heightLeft > 0) {
+      position -= pageHeight;
+      pdf.addPage();
+      pdf.addImage(dataUrl, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+    }
+
     pdf.save(filename.endsWith('.pdf') ? filename : `${filename}.pdf`);
   } catch (error) {
     console.error('Erro na exportação de PDF via html-to-image:', error);

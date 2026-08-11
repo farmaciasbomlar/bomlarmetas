@@ -26,35 +26,54 @@ function getGenAI() {
   });
 }
 
-// Helper to call generateContent with retry for transient high demand / 503 / 429 errors
-async function generateContentWithRetry(ai: GoogleGenAI, params: any, retries = 3, initialDelayMs = 1500) {
-  let delayMs = initialDelayMs;
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      return await ai.models.generateContent(params);
-    } catch (err: any) {
-      const errStr = String(err?.message || err);
-      const isTransient =
-        err?.status === 503 ||
-        err?.status === 429 ||
-        err?.code === 503 ||
-        err?.code === 429 ||
-        errStr.includes('503') ||
-        errStr.includes('429') ||
-        errStr.includes('high demand') ||
-        errStr.includes('UNAVAILABLE') ||
-        errStr.includes('RESOURCE_EXHAUSTED');
+// Helper to call generateContent with retry and fallback for transient high demand / 503 / 429 errors
+async function generateContentWithRetry(ai: GoogleGenAI, params: any, retriesPerModel = 2, initialDelayMs = 1000) {
+  const modelsToTry = Array.from(new Set([
+    params.model,
+    'gemini-flash-latest',
+    'gemini-3.1-pro-preview',
+  ])).filter(Boolean);
 
-      if (isTransient && attempt < retries) {
-        console.warn(`[Gemini API] Request failed (attempt ${attempt}/${retries}). Retrying in ${delayMs}ms... Error: ${errStr}`);
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-        delayMs *= 2;
-      } else {
-        throw err;
+  let lastError: any = null;
+
+  for (const modelName of modelsToTry) {
+    let delayMs = initialDelayMs;
+    for (let attempt = 1; attempt <= retriesPerModel; attempt++) {
+      try {
+        return await ai.models.generateContent({
+          ...params,
+          model: modelName,
+        });
+      } catch (err: any) {
+        lastError = err;
+        const errStr = String(err?.message || err);
+        const isTransient =
+          err?.status === 503 ||
+          err?.status === 429 ||
+          err?.code === 503 ||
+          err?.code === 429 ||
+          errStr.includes('503') ||
+          errStr.includes('429') ||
+          errStr.includes('high demand') ||
+          errStr.includes('UNAVAILABLE') ||
+          errStr.includes('RESOURCE_EXHAUSTED');
+
+        if (isTransient) {
+          console.warn(`[Gemini API] Request with model '${modelName}' failed (attempt ${attempt}/${retriesPerModel}). Error: ${errStr}`);
+          if (attempt < retriesPerModel) {
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+            delayMs *= 2;
+          }
+        } else {
+          // Non-transient error, rethrow immediately
+          throw err;
+        }
       }
     }
+    console.warn(`[Gemini API] Switching to fallback model after '${modelName}' encountered transient errors...`);
   }
-  throw new Error('Não foi possível se comunicar com o Gemini após várias tentativas.');
+
+  throw lastError || new Error('Não foi possível se comunicar com o Gemini após várias tentativas com os modelos disponíveis.');
 }
 
 // ----------------------------------------------------
