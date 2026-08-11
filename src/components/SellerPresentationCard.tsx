@@ -503,7 +503,7 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
                       }`}
                       title={!isExportingPDF ? 'Clique para editar a meta de ticket médio' : undefined}
                     >
-                      Meta: <span className="font-bold text-white">{formatCurrency(effectiveTicketGoal)}</span>
+                      Meta: <span className="font-bold text-white text-[18px] leading-[18px]" style={{ fontSize: '18px', lineHeight: '18px' }}>{formatCurrency(effectiveTicketGoal)}</span>
                     </span>
                   )}
 

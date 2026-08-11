@@ -76,7 +76,7 @@ export function calculateSellerMetrics(
   overrideTicketGoal?: number | null
 ): CalculatedSellerMetrics {
   const weight = collaborator.weightPercent || 0;
-  let targetAmount = goalConfig.totalGoal * (weight / 100);
+  const targetAmount = goalConfig.totalGoal * (weight / 100);
   const netSales = result?.netSales || 0;
   const ticketMedio = result?.ticketMedio || 0;
   const clientsCount = result?.clientsCount || 0;
@@ -85,15 +85,11 @@ export function calculateSellerMetrics(
   const discountPercent = result?.discountPercent || 0;
 
   const daysRemaining = Math.max(0, goalConfig.totalBusinessDays - goalConfig.elapsedDays);
-  let remainingGoal = Math.max(0, targetAmount - netSales);
+  const remainingGoal = Math.max(0, targetAmount - netSales);
   let dailyRequiredSales = daysRemaining > 0 ? remainingGoal / daysRemaining : 0;
 
   if (overrideDailyRequiredSales !== undefined && overrideDailyRequiredSales !== null) {
     dailyRequiredSales = overrideDailyRequiredSales;
-    if (daysRemaining > 0) {
-      remainingGoal = overrideDailyRequiredSales * daysRemaining;
-      targetAmount = netSales + remainingGoal;
-    }
   }
 
   const percentAchieved = targetAmount > 0 ? (netSales / targetAmount) * 100 : 0;
