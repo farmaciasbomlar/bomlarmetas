@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { GoalConfig, StoreResult, Collaborator, IndividualResult } from '../types';
 import {
   calculateStoreMetrics,
@@ -9,6 +9,8 @@ import {
   formatPercent,
   formatNumber,
 } from '../utils/calculations';
+import { exportElementToPdf } from '../utils/pdfExport';
+import { MuralPdfTemplate } from './MuralPdfTemplate';
 import {
   TrendingUp,
   AlertTriangle,
@@ -23,6 +25,7 @@ import {
   Flame,
   Award,
   RotateCcw,
+  Printer,
 } from 'lucide-react';
 
 interface StoreDashboardTabProps {
@@ -194,6 +197,24 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
     }
   };
 
+  const muralRef = useRef<HTMLDivElement>(null);
+  const [isExportingMural, setIsExportingMural] = useState(false);
+
+  const handleExportMuralPDF = async () => {
+    if (!muralRef.current || isExportingMural) return;
+    try {
+      setIsExportingMural(true);
+      const month = (goalConfig.monthName || 'Mes').replace(/\s+/g, '_');
+      const filename = `Mural_Resultados_${month}_Farmacia_Bom_Lar.pdf`;
+      await exportElementToPdf(muralRef.current, filename, '#ffffff');
+    } catch (error) {
+      console.error('Erro ao exportar mural em PDF:', error);
+      alert('Ocorreu um erro ao gerar o PDF do mural. Por favor, tente novamente.');
+    } finally {
+      setIsExportingMural(false);
+    }
+  };
+
   const storeStatusBadge = getStatusBadge(storeMetrics.status);
   const StoreStatusIcon = storeStatusBadge.icon;
 
@@ -204,6 +225,38 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
 
   return (
     <div className="space-y-8 animate-fadeIn pb-12">
+      {/* Top Header Bar & Mural Export Button */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-[#16181d] border border-white/10 rounded-2xl p-4 sm:px-6 shadow-xl">
+        <div>
+          <h2 className="text-xl font-extrabold text-white flex items-center gap-2 tracking-tight">
+            <Award className="w-5 h-5 text-[#00b5ac]" />
+            <span>Painel Desempenho da Loja</span>
+          </h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Mês: <strong className="text-gray-200">{goalConfig.monthName || 'Atual'}</strong> • Visão consolidada de metas, ritmo e resultados por vendedor
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleExportMuralPDF}
+          disabled={isExportingMural}
+          className="inline-flex items-center space-x-2 bg-gradient-to-r from-[#00b5ac] to-[#008d86] hover:from-[#00c7be] hover:to-[#00a39b] text-white px-4 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-[#00b5ac]/20 transition-all transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+        >
+          <Printer className="w-4 h-4" />
+          <span>{isExportingMural ? 'Gerando Mural PDF...' : 'Exportar Mural (PDF)'}</span>
+        </button>
+      </div>
+
+      {/* Hidden Mural PDF Template Component */}
+      <MuralPdfTemplate
+        ref={muralRef}
+        goalConfig={goalConfig}
+        storeMetrics={storeMetrics}
+        effectiveStoreDailyRequired={effectiveStoreDailyRequired}
+        calculatedSellers={calculatedSellers}
+      />
+
       {/* Top Banner: Store Goal Progress & Semaphore */}
       <div className="relative bg-gradient-to-br from-[#16181d] via-[#1a1c23] to-[#121316] border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl overflow-hidden">
         {/* Glow ambient effects */}
