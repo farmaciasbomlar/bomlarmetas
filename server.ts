@@ -26,6 +26,37 @@ function getGenAI() {
   });
 }
 
+// Helper to call generateContent with retry for transient high demand / 503 / 429 errors
+async function generateContentWithRetry(ai: GoogleGenAI, params: any, retries = 3, initialDelayMs = 1500) {
+  let delayMs = initialDelayMs;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await ai.models.generateContent(params);
+    } catch (err: any) {
+      const errStr = String(err?.message || err);
+      const isTransient =
+        err?.status === 503 ||
+        err?.status === 429 ||
+        err?.code === 503 ||
+        err?.code === 429 ||
+        errStr.includes('503') ||
+        errStr.includes('429') ||
+        errStr.includes('high demand') ||
+        errStr.includes('UNAVAILABLE') ||
+        errStr.includes('RESOURCE_EXHAUSTED');
+
+      if (isTransient && attempt < retries) {
+        console.warn(`[Gemini API] Request failed (attempt ${attempt}/${retries}). Retrying in ${delayMs}ms... Error: ${errStr}`);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        delayMs *= 2;
+      } else {
+        throw err;
+      }
+    }
+  }
+  throw new Error('Não foi possível se comunicar com o Gemini após várias tentativas.');
+}
+
 // ----------------------------------------------------
 // API 1: OCR Report Reader (Imagem 2 -> Structured Data)
 // ----------------------------------------------------
@@ -86,7 +117,7 @@ app.post('/api/ocr-dual-prints', async (req, res) => {
 
     const systemInstruction = `Você é um sistema especialista em OCR e análise comercial de farmácias e varejo. Extraia com precisão absoluta dados das planilhas e relatórios de vendas.`;
 
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithRetry(ai, {
       model: 'gemini-3.6-flash',
       contents: { parts },
       config: {
@@ -202,7 +233,7 @@ Retorne rigorosamente um JSON estruturado com o schema solicitado.`;
 
     const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
 
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithRetry(ai, {
       model: 'gemini-3.6-flash',
       contents: {
         parts: [
@@ -334,7 +365,7 @@ FORMATO DE SAÍDA: JSON estrito.`;
       })),
     };
 
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithRetry(ai, {
       model: 'gemini-3.6-flash',
       contents: `Análise de Desempenho e Diagnóstico de Vendas da Farmácia: ${JSON.stringify(promptData)}`,
       config: {
