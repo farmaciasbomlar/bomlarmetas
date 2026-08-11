@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { GoalConfig, StoreResult, Collaborator, IndividualResult } from '../types';
 import {
   calculateStoreMetrics,
@@ -22,6 +22,7 @@ import {
   ShieldAlert,
   Flame,
   Award,
+  RotateCcw,
 } from 'lucide-react';
 
 interface StoreDashboardTabProps {
@@ -31,6 +32,8 @@ interface StoreDashboardTabProps {
   individualResults: Record<string, IndividualResult>;
   manualDailyRequiredMap?: Record<string, number | null>;
   manualTicketGoalMap?: Record<string, number | null>;
+  manualStoreDailyRequired?: number | null;
+  setManualStoreDailyRequired?: React.Dispatch<React.SetStateAction<number | null>>;
   onSelectSeller: (sellerId: string) => void;
   onGoToEntry: () => void;
 }
@@ -42,21 +45,127 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
   individualResults,
   manualDailyRequiredMap,
   manualTicketGoalMap,
+  manualStoreDailyRequired,
+  setManualStoreDailyRequired,
   onSelectSeller,
   onGoToEntry,
 }) => {
   const storeMetrics = calculateStoreMetrics(goalConfig, storeResult, collaborators, individualResults);
   const sellers = collaborators.filter((c) => c.isSeller);
 
-  const calculatedSellers = sellers.map((seller) =>
-    calculateSellerMetrics(
-      seller,
-      goalConfig,
-      individualResults[seller.id],
-      getManualDailyOverride(manualDailyRequiredMap, seller),
-      getManualTicketOverride(manualTicketGoalMap, seller)
-    )
+  // Find or create OUTROS collaborator for display
+  const outrosCollab = collaborators.find(
+    (c) =>
+      c.code === 'OUTROS' ||
+      c.role === 'Outros' ||
+      c.id === 'seller-outros' ||
+      c.id === 'nonseller-02'
   );
+
+  const displayCollaborators = [...sellers];
+  if (outrosCollab) {
+    if (!displayCollaborators.some((c) => c.id === outrosCollab.id)) {
+      displayCollaborators.push(outrosCollab);
+    }
+  } else {
+    displayCollaborators.push({
+      id: 'seller-outros',
+      code: 'OUTROS',
+      name: 'GERÊNCIA / CAIXA / OUTROS',
+      isSeller: false,
+      role: 'Outros',
+      weightPercent: 0,
+      ticketGoal: 0,
+    });
+  }
+
+  // Helper to parse numeric values from user input
+  const parseFormattedNumber = (input: string): number | null => {
+    if (!input) return null;
+    let cleaned = input.replace(/[R$\s]/g, '');
+    if (cleaned.includes('.') && cleaned.includes(',')) {
+      cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+    } else if (cleaned.includes(',')) {
+      cleaned = cleaned.replace(',', '.');
+    }
+    const val = parseFloat(cleaned);
+    return isNaN(val) ? null : val;
+  };
+
+  const [isEditingStoreDaily, setIsEditingStoreDaily] = useState(false);
+  const [editingStoreDailyValue, setEditingStoreDailyValue] = useState('');
+
+  const isStoreDailyOverridden =
+    manualStoreDailyRequired !== undefined && manualStoreDailyRequired !== null;
+
+  const effectiveStoreDailyRequired = isStoreDailyOverridden
+    ? manualStoreDailyRequired!
+    : storeMetrics.dailyRequiredSales;
+
+  const handleSaveStoreDailyInput = () => {
+    const num = parseFormattedNumber(editingStoreDailyValue);
+    if (num !== null && num >= 0) {
+      setManualStoreDailyRequired?.(num);
+    }
+    setIsEditingStoreDaily(false);
+  };
+
+  const calculatedSellers = displayCollaborators.map((collaborator) => {
+    const isOutros =
+      collaborator.code === 'OUTROS' ||
+      collaborator.role === 'Outros' ||
+      collaborator.id === 'seller-outros' ||
+      collaborator.id === 'nonseller-02';
+
+    // Find result in individualResults
+    let result: IndividualResult | undefined =
+      individualResults[collaborator.id] ||
+      (collaborator.code ? individualResults[collaborator.code] : undefined);
+
+    if (isOutros && !result) {
+      result =
+        individualResults['seller-outros'] ||
+        individualResults['nonseller-02'] ||
+        individualResults['OUTROS'] ||
+        Object.values(individualResults).find(
+          (r: IndividualResult) => r.collaboratorId === 'seller-outros' || r.collaboratorId === 'nonseller-02'
+        );
+    }
+
+    // Consolidated values for OUTROS
+    let effectiveResult = result;
+    if (isOutros) {
+      const netSales =
+        result && result.netSales > 0 ? result.netSales : storeMetrics.nonSellersNetSales;
+      const clientsCount = result?.clientsCount || 0;
+      const ticketMedio =
+        result?.ticketMedio && result.ticketMedio > 0
+          ? result.ticketMedio
+          : clientsCount > 0
+          ? netSales / clientsCount
+          : 0;
+      const itemsCount = result?.itemsCount || 0;
+      const unitsCount = result?.unitsCount || 0;
+
+      effectiveResult = {
+        collaboratorId: collaborator.id,
+        netSales,
+        ticketMedio,
+        clientsCount,
+        itemsCount,
+        unitsCount,
+        discountPercent: result?.discountPercent || 0,
+      };
+    }
+
+    return calculateSellerMetrics(
+      collaborator,
+      goalConfig,
+      effectiveResult,
+      getManualDailyOverride(manualDailyRequiredMap, collaborator),
+      getManualTicketOverride(manualTicketGoalMap, collaborator)
+    );
+  });
 
   // Status semaphore colors
   const getStatusBadge = (status: 'ON_PACE' | 'WARNING' | 'BEHIND') => {
@@ -181,10 +290,60 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
                     <Flame className="w-4 h-4" />
                   </div>
                 </div>
-                <p className="text-xl font-extrabold text-white font-mono">
-                  {formatCurrency(storeMetrics.dailyRequiredSales)}
-                  <span className="text-[10px] font-normal text-gray-400 block font-sans">/ dia para bater a meta</span>
-                </p>
+
+                <div>
+                  {isEditingStoreDaily ? (
+                    <div className="flex items-center space-x-1.5 my-0.5">
+                      <span className="text-xl font-extrabold text-white font-mono">R$</span>
+                      <input
+                        type="text"
+                        value={editingStoreDailyValue}
+                        onChange={(e) => setEditingStoreDailyValue(e.target.value)}
+                        onBlur={handleSaveStoreDailyInput}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveStoreDailyInput();
+                          if (e.key === 'Escape') setIsEditingStoreDaily(false);
+                        }}
+                        autoFocus
+                        className="bg-[#141519] border border-[#f36e21] rounded-lg px-2 py-0.5 text-lg font-extrabold text-white font-mono focus:outline-none w-full max-w-[170px]"
+                        placeholder="0,00"
+                      />
+                    </div>
+                  ) : (
+                    <p
+                      onClick={() => {
+                        setIsEditingStoreDaily(true);
+                        setEditingStoreDailyValue(
+                          effectiveStoreDailyRequired > 0
+                            ? effectiveStoreDailyRequired.toFixed(2).replace('.', ',')
+                            : ''
+                        );
+                      }}
+                      className="text-xl font-extrabold text-white font-mono cursor-pointer hover:text-[#f36e21] transition-colors inline-block"
+                      title="Clique para editar a venda diária necessária"
+                    >
+                      {formatCurrency(effectiveStoreDailyRequired)}
+                    </p>
+                  )}
+
+                  <span className="text-[10px] font-normal text-gray-400 block font-sans mt-0.5">
+                    / dia para bater a meta
+                  </span>
+
+                  {isStoreDailyOverridden && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setManualStoreDailyRequired?.(null);
+                        setIsEditingStoreDaily(false);
+                      }}
+                      className="text-[11px] text-[#00b5ac] hover:text-[#008d86] font-medium underline mt-2 flex items-center space-x-1 transition-colors cursor-pointer"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Voltar ao cálculo automático</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Ticket Médio Loja */}
@@ -246,20 +405,34 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
         {/* Sellers Cards Grid (Estilo Imagem 3) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {calculatedSellers.map((s) => {
-            const badge = getStatusBadge(s.status);
+            const hasGoal = s.targetAmount > 0;
+            const badge = hasGoal
+              ? getStatusBadge(s.status)
+              : {
+                  label: 'Outros / Balcão',
+                  bg: 'bg-gray-500/20 border-gray-500/40 text-gray-300',
+                  icon: Users,
+                  color: '#9ca3af',
+                };
             const BadgeIcon = badge.icon;
 
             return (
               <div
                 key={s.collaborator.id}
-                onClick={() => onSelectSeller(s.collaborator.id)}
-                className="group relative bg-[#1a1b20] hover:bg-[#202229] border border-white/10 hover:border-[#00b5ac]/50 rounded-2xl p-5 cursor-pointer transition-all duration-300 shadow-lg hover:shadow-[#00b5ac]/10 space-y-4"
+                onClick={() => {
+                  if (s.collaborator.isSeller) {
+                    onSelectSeller(s.collaborator.id);
+                  }
+                }}
+                className={`group relative bg-[#1a1b20] hover:bg-[#202229] border border-white/10 ${
+                  s.collaborator.isSeller ? 'hover:border-[#00b5ac]/50 cursor-pointer' : ''
+                } rounded-2xl p-5 transition-all duration-300 shadow-lg hover:shadow-[#00b5ac]/10 space-y-4`}
               >
                 {/* Header */}
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-[10px] font-mono text-gray-400">Cód: {s.collaborator.code}</span>
-                    <h3 className="text-sm font-extrabold text-white group-hover:text-[#00b5ac] transition-colors">
+                    <h3 className={`text-sm font-extrabold text-white ${s.collaborator.isSeller ? 'group-hover:text-[#00b5ac]' : ''} transition-colors`}>
                       {s.collaborator.name}
                     </h3>
                   </div>
@@ -272,14 +445,16 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-gray-400">% Bateu da Meta:</span>
-                    <span className="font-bold text-white font-mono">{formatPercent(s.percentAchieved, 1)}</span>
+                    <span className="font-bold text-white font-mono">
+                      {hasGoal ? formatPercent(s.percentAchieved, 1) : 'Sem meta'}
+                    </span>
                   </div>
                   {/* Progress bar */}
                   <div className="w-full h-2.5 bg-[#121316] rounded-full overflow-hidden p-0.5 border border-white/5">
                     <div
                       className="h-full rounded-full transition-all duration-500"
                       style={{
-                        width: `${Math.min(100, Math.max(0, s.percentAchieved))}%`,
+                        width: hasGoal ? `${Math.min(100, Math.max(0, s.percentAchieved))}%` : '0%',
                         backgroundColor: badge.color,
                       }}
                     />
@@ -294,13 +469,17 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
                   </div>
                   <div>
                     <span className="text-[10px] text-gray-400 block">Meta Diária Restante</span>
-                    <span className="font-mono font-bold text-[#f36e21]">{formatCurrency(s.dailyRequiredSales)}/dia</span>
+                    <span className="font-mono font-bold text-[#f36e21]">
+                      {hasGoal ? `${formatCurrency(s.dailyRequiredSales)}/dia` : 'N/A'}
+                    </span>
                   </div>
                   <div>
                     <span className="text-[10px] text-gray-400 block">Ticket Médio</span>
                     <span className="font-mono font-semibold text-gray-200">
                       {formatCurrency(s.ticketMedio)}{' '}
-                      <span className="text-[9px] text-gray-500">(/ Meta {formatCurrency(s.ticketGoal)})</span>
+                      {hasGoal && s.ticketGoal > 0 && (
+                        <span className="text-[9px] text-gray-500">(/ Meta {formatCurrency(s.ticketGoal)})</span>
+                      )}
                     </span>
                   </div>
                   <div>
@@ -309,12 +488,20 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
                   </div>
                 </div>
 
-                <div className="text-right">
-                  <span className="text-[10px] text-[#00b5ac] font-medium group-hover:underline inline-flex items-center space-x-1">
-                    <span>Ver Apresentação & PDF</span>
-                    <ArrowUpRight className="w-3 h-3" />
-                  </span>
-                </div>
+                {s.collaborator.isSeller ? (
+                  <div className="text-right">
+                    <span className="text-[10px] text-[#00b5ac] font-medium group-hover:underline inline-flex items-center space-x-1">
+                      <span>Ver Apresentação & PDF</span>
+                      <ArrowUpRight className="w-3 h-3" />
+                    </span>
+                  </div>
+                ) : (
+                  <div className="text-right">
+                    <span className="text-[10px] text-gray-500 font-medium">
+                      Grupo Consolidado
+                    </span>
+                  </div>
+                )}
               </div>
             );
           })}

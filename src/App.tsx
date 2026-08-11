@@ -36,10 +36,12 @@ export default function App() {
   // Shared Session State for Manual Goal Overrides (reset per session/data reload)
   const [manualDailyRequiredMap, setManualDailyRequiredMap] = useState<Record<string, number | null>>({});
   const [manualTicketGoalMap, setManualTicketGoalMap] = useState<Record<string, number | null>>({});
+  const [manualStoreDailyRequired, setManualStoreDailyRequired] = useState<number | null>(null);
 
   const handleResetManualOverrides = () => {
     setManualDailyRequiredMap({});
     setManualTicketGoalMap({});
+    setManualStoreDailyRequired(null);
   };
 
   // Core Data State (persisted in localStorage for convenience)
@@ -119,6 +121,8 @@ export default function App() {
             individualResults={individualResults}
             manualDailyRequiredMap={manualDailyRequiredMap}
             manualTicketGoalMap={manualTicketGoalMap}
+            manualStoreDailyRequired={manualStoreDailyRequired}
+            setManualStoreDailyRequired={setManualStoreDailyRequired}
             onSelectSeller={(id) => {
               setSelectedSellerId(id);
               setActiveTab('seller-card');
