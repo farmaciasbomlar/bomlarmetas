@@ -3,6 +3,8 @@ import { GoalConfig, StoreResult, Collaborator, IndividualResult } from '../type
 import {
   calculateStoreMetrics,
   calculateSellerMetrics,
+  getManualDailyOverride,
+  getManualTicketOverride,
   formatCurrency,
   formatPercent,
   formatNumber,
@@ -27,6 +29,8 @@ interface StoreDashboardTabProps {
   storeResult: StoreResult;
   collaborators: Collaborator[];
   individualResults: Record<string, IndividualResult>;
+  manualDailyRequiredMap?: Record<string, number | null>;
+  manualTicketGoalMap?: Record<string, number | null>;
   onSelectSeller: (sellerId: string) => void;
   onGoToEntry: () => void;
 }
@@ -36,6 +40,8 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
   storeResult,
   collaborators,
   individualResults,
+  manualDailyRequiredMap,
+  manualTicketGoalMap,
   onSelectSeller,
   onGoToEntry,
 }) => {
@@ -43,7 +49,13 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
   const sellers = collaborators.filter((c) => c.isSeller);
 
   const calculatedSellers = sellers.map((seller) =>
-    calculateSellerMetrics(seller, goalConfig, individualResults[seller.id])
+    calculateSellerMetrics(
+      seller,
+      goalConfig,
+      individualResults[seller.id],
+      getManualDailyOverride(manualDailyRequiredMap, seller),
+      getManualTicketOverride(manualTicketGoalMap, seller)
+    )
   );
 
   // Status semaphore colors

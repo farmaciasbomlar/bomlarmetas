@@ -40,13 +40,43 @@ export function formatNumber(value: number | undefined | null, decimals = 0): st
   });
 }
 
+export function getManualDailyOverride(
+  map: Record<string, number | null> | undefined,
+  collaborator: Collaborator
+): number | null {
+  if (!map || !collaborator) return null;
+  if (collaborator.id && map[collaborator.id] !== undefined && map[collaborator.id] !== null) {
+    return map[collaborator.id];
+  }
+  if (collaborator.code && map[collaborator.code] !== undefined && map[collaborator.code] !== null) {
+    return map[collaborator.code];
+  }
+  return null;
+}
+
+export function getManualTicketOverride(
+  map: Record<string, number | null> | undefined,
+  collaborator: Collaborator
+): number | null {
+  if (!map || !collaborator) return null;
+  if (collaborator.id && map[collaborator.id] !== undefined && map[collaborator.id] !== null) {
+    return map[collaborator.id];
+  }
+  if (collaborator.code && map[collaborator.code] !== undefined && map[collaborator.code] !== null) {
+    return map[collaborator.code];
+  }
+  return null;
+}
+
 export function calculateSellerMetrics(
   collaborator: Collaborator,
   goalConfig: GoalConfig,
-  result: IndividualResult | undefined
+  result: IndividualResult | undefined,
+  overrideDailyRequiredSales?: number | null,
+  overrideTicketGoal?: number | null
 ): CalculatedSellerMetrics {
   const weight = collaborator.weightPercent || 0;
-  const targetAmount = goalConfig.totalGoal * (weight / 100);
+  let targetAmount = goalConfig.totalGoal * (weight / 100);
   const netSales = result?.netSales || 0;
   const ticketMedio = result?.ticketMedio || 0;
   const clientsCount = result?.clientsCount || 0;
@@ -54,11 +84,19 @@ export function calculateSellerMetrics(
   const unitsCount = result?.unitsCount || 0;
   const discountPercent = result?.discountPercent || 0;
 
-  const percentAchieved = targetAmount > 0 ? (netSales / targetAmount) * 100 : 0;
-
   const daysRemaining = Math.max(0, goalConfig.totalBusinessDays - goalConfig.elapsedDays);
-  const remainingGoal = Math.max(0, targetAmount - netSales);
-  const dailyRequiredSales = daysRemaining > 0 ? remainingGoal / daysRemaining : 0;
+  let remainingGoal = Math.max(0, targetAmount - netSales);
+  let dailyRequiredSales = daysRemaining > 0 ? remainingGoal / daysRemaining : 0;
+
+  if (overrideDailyRequiredSales !== undefined && overrideDailyRequiredSales !== null) {
+    dailyRequiredSales = overrideDailyRequiredSales;
+    if (daysRemaining > 0) {
+      remainingGoal = overrideDailyRequiredSales * daysRemaining;
+      targetAmount = netSales + remainingGoal;
+    }
+  }
+
+  const percentAchieved = targetAmount > 0 ? (netSales / targetAmount) * 100 : 0;
 
   const expectedPacePercent =
     goalConfig.totalBusinessDays > 0
@@ -78,7 +116,11 @@ export function calculateSellerMetrics(
     }
   }
 
-  const ticketGoal = collaborator.ticketGoal || goalConfig.defaultSellerTicketGoal || 54;
+  const ticketGoal =
+    overrideTicketGoal !== undefined && overrideTicketGoal !== null && overrideTicketGoal > 0
+      ? overrideTicketGoal
+      : collaborator.ticketGoal || goalConfig.defaultSellerTicketGoal || 54;
+
   let ticketStatus: PerformanceStatus = 'ON_PACE';
   if (ticketMedio < ticketGoal * 0.88) {
     ticketStatus = 'BEHIND';

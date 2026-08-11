@@ -33,6 +33,15 @@ export default function App() {
   const [isUsageGuideOpen, setIsUsageGuideOpen] = useState<boolean>(false);
   const [selectedSellerId, setSelectedSellerId] = useState<string>('seller-727');
 
+  // Shared Session State for Manual Goal Overrides (reset per session/data reload)
+  const [manualDailyRequiredMap, setManualDailyRequiredMap] = useState<Record<string, number | null>>({});
+  const [manualTicketGoalMap, setManualTicketGoalMap] = useState<Record<string, number | null>>({});
+
+  const handleResetManualOverrides = () => {
+    setManualDailyRequiredMap({});
+    setManualTicketGoalMap({});
+  };
+
   // Core Data State (persisted in localStorage for convenience)
   const [goalConfig, setGoalConfig] = useState<GoalConfig>(() => {
     const saved = localStorage.getItem('pharma_goal_config');
@@ -108,6 +117,8 @@ export default function App() {
             storeResult={storeResult}
             collaborators={collaborators}
             individualResults={individualResults}
+            manualDailyRequiredMap={manualDailyRequiredMap}
+            manualTicketGoalMap={manualTicketGoalMap}
             onSelectSeller={(id) => {
               setSelectedSellerId(id);
               setActiveTab('seller-card');
@@ -124,6 +135,10 @@ export default function App() {
             goalConfig={goalConfig}
             individualResults={individualResults}
             aiAnalysisSellers={aiAnalysis?.sellers}
+            manualDailyRequiredMap={manualDailyRequiredMap}
+            setManualDailyRequiredMap={setManualDailyRequiredMap}
+            manualTicketGoalMap={manualTicketGoalMap}
+            setManualTicketGoalMap={setManualTicketGoalMap}
           />
         )}
 
@@ -138,7 +153,10 @@ export default function App() {
             storeResult={storeResult}
             setStoreResult={setStoreResult}
             setAiAnalysis={setAiAnalysis}
-            onAfterConfirmResults={() => setActiveTab('dashboard')}
+            onAfterConfirmResults={() => {
+              handleResetManualOverrides();
+              setActiveTab('dashboard');
+            }}
           />
         )}
 

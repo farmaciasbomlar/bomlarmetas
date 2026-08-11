@@ -2,6 +2,8 @@ import React, { useRef, useState } from 'react';
 import { Collaborator, GoalConfig, IndividualResult, AIAnalysisSeller } from '../types';
 import {
   calculateSellerMetrics,
+  getManualDailyOverride,
+  getManualTicketOverride,
   formatCurrency,
   formatPercent,
   formatNumber,
@@ -31,6 +33,10 @@ interface SellerPresentationCardProps {
   goalConfig: GoalConfig;
   individualResults: Record<string, IndividualResult>;
   aiAnalysisSellers?: AIAnalysisSeller[];
+  manualDailyRequiredMap: Record<string, number | null>;
+  setManualDailyRequiredMap: React.Dispatch<React.SetStateAction<Record<string, number | null>>>;
+  manualTicketGoalMap: Record<string, number | null>;
+  setManualTicketGoalMap: React.Dispatch<React.SetStateAction<Record<string, number | null>>>;
 }
 
 export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
@@ -40,6 +46,10 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
   goalConfig,
   individualResults,
   aiAnalysisSellers,
+  manualDailyRequiredMap,
+  setManualDailyRequiredMap,
+  manualTicketGoalMap,
+  setManualTicketGoalMap,
 }) => {
   const cardRef = useRef<HTMLDivElement>(null);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
@@ -54,10 +64,15 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
     );
   }
 
+  const dailyOverride = getManualDailyOverride(manualDailyRequiredMap, currentSeller);
+  const ticketOverride = getManualTicketOverride(manualTicketGoalMap, currentSeller);
+
   const metrics = calculateSellerMetrics(
     currentSeller,
     goalConfig,
-    individualResults[currentSeller.id]
+    individualResults[currentSeller.id],
+    dailyOverride,
+    ticketOverride
   );
 
   const sellerAI = aiAnalysisSellers?.find((s) => s.collaboratorId === currentSeller.id);
@@ -110,35 +125,30 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
     return isNaN(val) ? null : val;
   };
 
-  // Session-based manual overrides for Daily Required Goal and Ticket Goal
-  const [manualDailyRequiredMap, setManualDailyRequiredMap] = useState<Record<string, number | null>>({});
-  const [manualTicketGoalMap, setManualTicketGoalMap] = useState<Record<string, number | null>>({});
-
   const [editingDailySellerId, setEditingDailySellerId] = useState<string | null>(null);
   const [editingDailyValue, setEditingDailyValue] = useState<string>('');
 
   const [editingTicketSellerId, setEditingTicketSellerId] = useState<string | null>(null);
   const [editingTicketValue, setEditingTicketValue] = useState<string>('');
 
-  const isDailyOverridden =
-    manualDailyRequiredMap[currentSeller.id] !== undefined &&
-    manualDailyRequiredMap[currentSeller.id] !== null;
-  const effectiveDailyRequiredSales = isDailyOverridden
-    ? manualDailyRequiredMap[currentSeller.id]!
-    : metrics.dailyRequiredSales;
+  const isDailyOverridden = dailyOverride !== null && dailyOverride !== undefined;
+  const effectiveDailyRequiredSales = metrics.dailyRequiredSales;
 
-  const isTicketOverridden =
-    manualTicketGoalMap[currentSeller.id] !== undefined &&
-    manualTicketGoalMap[currentSeller.id] !== null;
-  const effectiveTicketGoal = isTicketOverridden
-    ? manualTicketGoalMap[currentSeller.id]!
-    : metrics.ticketGoal;
+  const isTicketOverridden = ticketOverride !== null && ticketOverride !== undefined;
+  const effectiveTicketGoal = metrics.ticketGoal;
 
   const handleSaveDailyInput = () => {
     if (!editingDailySellerId) return;
     const num = parseFormattedNumber(editingDailyValue);
     if (num !== null && num >= 0) {
-      setManualDailyRequiredMap((prev) => ({ ...prev, [editingDailySellerId]: num }));
+      const seller = sellers.find((s) => s.id === editingDailySellerId);
+      if (seller) {
+        setManualDailyRequiredMap((prev) => ({
+          ...prev,
+          [seller.id]: num,
+          ...(seller.code ? { [seller.code]: num } : {}),
+        }));
+      }
     }
     setEditingDailySellerId(null);
   };
@@ -147,7 +157,14 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
     if (!editingTicketSellerId) return;
     const num = parseFormattedNumber(editingTicketValue);
     if (num !== null && num >= 0) {
-      setManualTicketGoalMap((prev) => ({ ...prev, [editingTicketSellerId]: num }));
+      const seller = sellers.find((s) => s.id === editingTicketSellerId);
+      if (seller) {
+        setManualTicketGoalMap((prev) => ({
+          ...prev,
+          [seller.id]: num,
+          ...(seller.code ? { [seller.code]: num } : {}),
+        }));
+      }
     }
     setEditingTicketSellerId(null);
   };
@@ -419,7 +436,12 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      setManualDailyRequiredMap((prev) => ({ ...prev, [currentSeller.id]: null }));
+                      setManualDailyRequiredMap((prev) => {
+                        const next = { ...prev };
+                        delete next[currentSeller.id];
+                        if (currentSeller.code) delete next[currentSeller.code];
+                        return next;
+                      });
                       setEditingDailySellerId(null);
                     }}
                     className="text-[11px] text-[#00b5ac] hover:text-[#008d86] font-medium underline mt-2 flex items-center space-x-1 transition-colors cursor-pointer"
@@ -489,7 +511,12 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        setManualTicketGoalMap((prev) => ({ ...prev, [currentSeller.id]: null }));
+                        setManualTicketGoalMap((prev) => {
+                          const next = { ...prev };
+                          delete next[currentSeller.id];
+                          if (currentSeller.code) delete next[currentSeller.code];
+                          return next;
+                        });
                         setEditingTicketSellerId(null);
                       }}
                       className="text-[10px] text-[#00b5ac] hover:text-[#008d86] font-medium underline mt-1 flex items-center space-x-1 transition-colors cursor-pointer"
