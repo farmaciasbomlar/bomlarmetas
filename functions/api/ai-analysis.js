@@ -1,5 +1,17 @@
 import { GoogleGenAI } from '@google/genai';
 
+// ── CORS ──────────────────────────────────────────────
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+// Responde ao preflight (isto resolve o erro 405)
+export async function onRequestOptions() {
+  return new Response(null, { status: 204, headers: CORS_HEADERS });
+}
+
 function getGenAI(env) {
   const apiKey = env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY não está configurada no ambiente.');
@@ -50,7 +62,10 @@ export async function onRequestPost({ request, env }) {
   try {
     const { data, prompt } = await request.json();
     if (!data) {
-      return Response.json({ error: 'Nenhum dado foi fornecido para análise.' }, { status: 400 });
+      return new Response(
+        JSON.stringify({ error: 'Nenhum dado foi fornecido para análise.' }),
+        { status: 400, headers: { 'Content-Type': 'application/json', ...CORS_HEADERS } }
+      );
     }
     const ai = getGenAI(env);
 
@@ -70,7 +85,7 @@ export async function onRequestPost({ request, env }) {
 
     return new Response(
       JSON.stringify({ analysis: response.text || 'Não foi possível gerar a análise.' }),
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: { 'Content-Type': 'application/json', ...CORS_HEADERS } }
     );
   } catch (error) {
     const errStr = String(error?.message || error || '');
@@ -83,7 +98,7 @@ export async function onRequestPost({ request, env }) {
         isQuotaExceeded: isQuota,
         details: error.message,
       }),
-      { status: isQuota ? 429 : 500, headers: { 'Content-Type': 'application/json' } }
+      { status: isQuota ? 429 : 500, headers: { 'Content-Type': 'application/json', ...CORS_HEADERS } }
     );
   }
 }
