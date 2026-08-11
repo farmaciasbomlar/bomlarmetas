@@ -26,12 +26,28 @@ function getGenAI() {
   });
 }
 
+// Helper to parse retry delay from Gemini rate limit error messages
+function parseRetryDelayMs(err: any, defaultMs: number): number {
+  const errStr = String(err?.message || err || '');
+  const match = errStr.match(/retry in ([0-9.]+)s/i);
+  if (match && match[1]) {
+    const seconds = parseFloat(match[1]);
+    if (!isNaN(seconds) && seconds > 0) {
+      return Math.min(Math.ceil(seconds * 1000) + 500, 15000);
+    }
+  }
+  return Math.max(defaultMs, 3000);
+}
+
 // Helper to call generateContent with retry and fallback for transient high demand / 503 / 429 errors
-async function generateContentWithRetry(ai: GoogleGenAI, params: any, retriesPerModel = 2, initialDelayMs = 1000) {
+async function generateContentWithRetry(ai: GoogleGenAI, params: any, retriesPerModel = 2, initialDelayMs = 2000) {
+  const primaryModel = params.model || 'gemini-3.6-flash';
   const modelsToTry = Array.from(new Set([
-    params.model,
-    'gemini-flash-latest',
-    'gemini-3.1-pro-preview',
+    primaryModel,
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
+    'gemini-2.5-pro',
   ])).filter(Boolean);
 
   let lastError: any = null;
@@ -59,9 +75,10 @@ async function generateContentWithRetry(ai: GoogleGenAI, params: any, retriesPer
           errStr.includes('RESOURCE_EXHAUSTED');
 
         if (isTransient) {
-          console.warn(`[Gemini API] Request with model '${modelName}' failed (attempt ${attempt}/${retriesPerModel}). Error: ${errStr}`);
+          const waitTime = parseRetryDelayMs(err, delayMs);
+          console.warn(`[Gemini API] Request with model '${modelName}' failed (attempt ${attempt}/${retriesPerModel}). Waiting ${waitTime}ms. Error: ${errStr}`);
           if (attempt < retriesPerModel) {
-            await new Promise((resolve) => setTimeout(resolve, delayMs));
+            await new Promise((resolve) => setTimeout(resolve, waitTime));
             delayMs *= 2;
           }
         } else {
@@ -209,8 +226,18 @@ app.post('/api/ocr-dual-prints', async (req, res) => {
     return res.json(parsedJson);
   } catch (error: any) {
     console.error('Erro na API OCR Dual Prints:', error);
-    return res.status(500).json({
-      error: 'Falha ao processar imagens via OCR Gemini.',
+    const errStr = String(error?.message || error || '');
+    const isQuota =
+      error?.status === 429 ||
+      errStr.includes('429') ||
+      errStr.includes('RESOURCE_EXHAUSTED') ||
+      errStr.includes('Quota exceeded');
+
+    return res.status(isQuota ? 429 : 500).json({
+      error: isQuota
+        ? 'A cota temporária de solicitações do Gemini foi excedida. Por favor, aguarde cerca de 10 a 15 segundos e tente novamente.'
+        : 'Falha ao processar imagens via OCR Gemini.',
+      isQuotaExceeded: isQuota,
       details: error.message,
     });
   }
@@ -317,8 +344,18 @@ Retorne rigorosamente um JSON estruturado com o schema solicitado.`;
     return res.json(parsedJson);
   } catch (error: any) {
     console.error('Erro na API OCR:', error);
-    return res.status(500).json({
-      error: 'Falha ao processar imagem via OCR Gemini.',
+    const errStr = String(error?.message || error || '');
+    const isQuota =
+      error?.status === 429 ||
+      errStr.includes('429') ||
+      errStr.includes('RESOURCE_EXHAUSTED') ||
+      errStr.includes('Quota exceeded');
+
+    return res.status(isQuota ? 429 : 500).json({
+      error: isQuota
+        ? 'A cota temporária de solicitações do Gemini foi excedida. Por favor, aguarde cerca de 10 a 15 segundos e tente novamente.'
+        : 'Falha ao processar imagem via OCR Gemini.',
+      isQuotaExceeded: isQuota,
       details: error.message,
     });
   }
@@ -456,8 +493,18 @@ FORMATO DE SAÍDA: JSON estrito.`;
     return res.json(parsed);
   } catch (error: any) {
     console.error('Erro na API AI Analysis:', error);
-    return res.status(500).json({
-      error: 'Falha ao gerar diagnóstico com Inteligência Artificial.',
+    const errStr = String(error?.message || error || '');
+    const isQuota =
+      error?.status === 429 ||
+      errStr.includes('429') ||
+      errStr.includes('RESOURCE_EXHAUSTED') ||
+      errStr.includes('Quota exceeded');
+
+    return res.status(isQuota ? 429 : 500).json({
+      error: isQuota
+        ? 'A cota temporária de solicitações do Gemini foi excedida. Por favor, aguarde cerca de 10 a 15 segundos e tente novamente.'
+        : 'Falha ao gerar diagnóstico com Inteligência Artificial.',
+      isQuotaExceeded: isQuota,
       details: error.message,
     });
   }

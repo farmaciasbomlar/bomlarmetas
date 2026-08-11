@@ -59,6 +59,7 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
   // Find or create OUTROS collaborator for display
   const outrosCollab = collaborators.find(
     (c) =>
+      c.code === '0' ||
       c.code === 'OUTROS' ||
       c.role === 'Outros' ||
       c.id === 'seller-outros' ||
@@ -73,7 +74,7 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
   } else {
     displayCollaborators.push({
       id: 'seller-outros',
-      code: 'OUTROS',
+      code: '0',
       name: 'GERÊNCIA / CAIXA / OUTROS',
       isSeller: false,
       role: 'Outros',
@@ -115,6 +116,7 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
 
   const calculatedSellers = displayCollaborators.map((collaborator) => {
     const isOutros =
+      collaborator.code === '0' ||
       collaborator.code === 'OUTROS' ||
       collaborator.role === 'Outros' ||
       collaborator.id === 'seller-outros' ||
@@ -130,8 +132,12 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
         individualResults['seller-outros'] ||
         individualResults['nonseller-02'] ||
         individualResults['OUTROS'] ||
+        individualResults['0'] ||
         Object.values(individualResults).find(
-          (r: IndividualResult) => r.collaboratorId === 'seller-outros' || r.collaboratorId === 'nonseller-02'
+          (r: IndividualResult) =>
+            r.collaboratorId === 'seller-outros' ||
+            r.collaboratorId === 'nonseller-02' ||
+            r.collaboratorId === '0'
         );
     }
 
@@ -139,7 +145,9 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
     let effectiveResult = result;
     if (isOutros) {
       const netSales =
-        result && result.netSales > 0 ? result.netSales : storeMetrics.nonSellersNetSales;
+        result && result.netSales !== undefined && result.netSales >= 0
+          ? result.netSales
+          : storeMetrics.nonSellersNetSales;
       const clientsCount = result?.clientsCount || 0;
       const ticketMedio =
         result?.ticketMedio && result.ticketMedio > 0
@@ -473,13 +481,9 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
               <div
                 key={s.collaborator.id}
                 onClick={() => {
-                  if (s.collaborator.isSeller) {
-                    onSelectSeller(s.collaborator.id);
-                  }
+                  onSelectSeller(s.collaborator.id);
                 }}
-                className={`group relative bg-[#1a1b20] hover:bg-[#202229] border border-white/10 ${
-                  s.collaborator.isSeller ? 'hover:border-[#00b5ac]/50 cursor-pointer' : ''
-                } rounded-2xl p-5 transition-all duration-300 shadow-lg hover:shadow-[#00b5ac]/10 space-y-4`}
+                className="group relative bg-[#1a1b20] hover:bg-[#202229] border border-white/10 hover:border-[#00b5ac]/50 cursor-pointer rounded-2xl p-5 transition-all duration-300 shadow-lg hover:shadow-[#00b5ac]/10 space-y-4"
               >
                 {/* Header */}
                 <div className="flex items-center justify-between">

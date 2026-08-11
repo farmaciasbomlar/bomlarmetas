@@ -93,12 +93,43 @@ export default function App() {
     }
   }, [aiAnalysis]);
 
-  const sellers = collaborators.filter((c) => c.isSeller);
+  const sellerCollaborators = collaborators.filter((c) => c.isSeller);
+
+  const outrosCollab = collaborators.find(
+    (c) =>
+      c.code === '0' ||
+      c.code === 'OUTROS' ||
+      c.role === 'Outros' ||
+      c.id === 'seller-outros' ||
+      c.id === 'nonseller-02'
+  );
+
+  const displayOutros: Collaborator = outrosCollab
+    ? { ...outrosCollab, code: '0', name: 'OUTROS' }
+    : {
+        id: 'seller-outros',
+        code: '0',
+        name: 'OUTROS',
+        isSeller: false,
+        role: 'Outros',
+        weightPercent: 0,
+        ticketGoal: 0,
+      };
+
+  const presentationSellers = [...sellerCollaborators, displayOutros];
 
   // Ensure valid selected seller
   useEffect(() => {
-    if (sellers.length > 0 && !sellers.some((s) => s.id === selectedSellerId)) {
-      setSelectedSellerId(sellers[0].id);
+    if (
+      presentationSellers.length > 0 &&
+      !presentationSellers.some(
+        (s) =>
+          s.id === selectedSellerId ||
+          s.code === selectedSellerId ||
+          (selectedSellerId === 'seller-outros' && (s.id === 'seller-outros' || s.id === 'nonseller-02' || s.code === '0'))
+      )
+    ) {
+      setSelectedSellerId(presentationSellers[0].id);
     }
   }, [collaborators, selectedSellerId]);
 
@@ -133,7 +164,7 @@ export default function App() {
 
         {activeTab === 'seller-card' && (
           <SellerPresentationCard
-            sellers={sellers}
+            sellers={presentationSellers}
             selectedSellerId={selectedSellerId}
             setSelectedSellerId={setSelectedSellerId}
             goalConfig={goalConfig}

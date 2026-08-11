@@ -54,7 +54,39 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
   const cardRef = useRef<HTMLDivElement>(null);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
 
-  const currentSeller = sellers.find((s) => s.id === selectedSellerId) || sellers[0];
+  // Build displaySellers list containing all sellers + [0] OUTROS
+  const outrosInSellers = sellers.find(
+    (s) =>
+      s.code === '0' ||
+      s.code === 'OUTROS' ||
+      s.role === 'Outros' ||
+      s.id === 'seller-outros' ||
+      s.id === 'nonseller-02'
+  );
+
+  const activeOutros: Collaborator = outrosInSellers
+    ? { ...outrosInSellers, code: '0', name: 'OUTROS' }
+    : {
+        id: 'seller-outros',
+        code: '0',
+        name: 'OUTROS',
+        isSeller: false,
+        role: 'Outros',
+        weightPercent: 0,
+        ticketGoal: 0,
+      };
+
+  const registeredSellers = sellers.filter((s) => s.isSeller);
+  const displaySellers = [...registeredSellers, activeOutros];
+
+  const currentSeller =
+    displaySellers.find(
+      (s) =>
+        s.id === selectedSellerId ||
+        s.code === selectedSellerId ||
+        (selectedSellerId === 'seller-outros' && (s.id === 'seller-outros' || s.id === 'nonseller-02' || s.code === '0')) ||
+        (selectedSellerId === '0' && (s.id === 'seller-outros' || s.id === 'nonseller-02' || s.code === '0'))
+    ) || displaySellers[0];
 
   if (!currentSeller) {
     return (
@@ -64,21 +96,85 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
     );
   }
 
+  const isOutros =
+    currentSeller.code === '0' ||
+    currentSeller.code === 'OUTROS' ||
+    currentSeller.role === 'Outros' ||
+    currentSeller.id === 'seller-outros' ||
+    currentSeller.id === 'nonseller-02';
+
+  // Find result in individualResults
+  let effectiveResult: IndividualResult | undefined = individualResults[currentSeller.id];
+
+  if (isOutros) {
+    const resultObj =
+      individualResults[currentSeller.id] ||
+      individualResults['seller-outros'] ||
+      individualResults['nonseller-02'] ||
+      individualResults['0'] ||
+      individualResults['OUTROS'];
+
+    let registeredSellersNetSales = 0;
+    registeredSellers.forEach((s) => {
+      registeredSellersNetSales += individualResults[s.id]?.netSales || 0;
+    });
+
+    const storeNetSales =
+      individualResults['store']?.netSales ||
+      Object.values(individualResults).reduce((acc: number, r: IndividualResult) => acc + (r.netSales || 0), 0);
+
+    const netSales =
+      resultObj && resultObj.netSales !== undefined && resultObj.netSales >= 0
+        ? resultObj.netSales
+        : Math.max(0, storeNetSales - registeredSellersNetSales);
+
+    const clientsCount = resultObj?.clientsCount || 0;
+    const itemsCount = resultObj?.itemsCount || 0;
+    const unitsCount = resultObj?.unitsCount || 0;
+    const discountPercent = resultObj?.discountPercent || 0;
+    const ticketMedio =
+      resultObj?.ticketMedio && resultObj.ticketMedio > 0
+        ? resultObj.ticketMedio
+        : clientsCount > 0
+        ? netSales / clientsCount
+        : 0;
+
+    effectiveResult = {
+      collaboratorId: currentSeller.id,
+      netSales,
+      ticketMedio,
+      clientsCount,
+      itemsCount,
+      unitsCount,
+      discountPercent,
+    };
+  }
+
   const dailyOverride = getManualDailyOverride(manualDailyRequiredMap, currentSeller);
   const ticketOverride = getManualTicketOverride(manualTicketGoalMap, currentSeller);
 
   const metrics = calculateSellerMetrics(
     currentSeller,
     goalConfig,
-    individualResults[currentSeller.id],
+    effectiveResult,
     dailyOverride,
     ticketOverride
   );
 
+  const hasGoal = metrics.targetAmount > 0;
+
   const sellerAI = aiAnalysisSellers?.find((s) => s.collaboratorId === currentSeller.id);
 
   // Status semaphore badge
-  const getStatusInfo = (status: 'ON_PACE' | 'WARNING' | 'BEHIND') => {
+  const getStatusInfo = (status: 'ON_PACE' | 'WARNING' | 'BEHIND', hasGoal: boolean) => {
+    if (!hasGoal) {
+      return {
+        label: 'SEM META CADASTRADA',
+        bg: 'bg-gray-500/20 border-gray-500/40 text-gray-300',
+        color: '#9ca3af',
+        icon: Users,
+      };
+    }
     switch (status) {
       case 'ON_PACE':
         return {
@@ -104,12 +200,12 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
     }
   };
 
-  const statusInfo = getStatusInfo(metrics.status);
+  const statusInfo = getStatusInfo(metrics.status, hasGoal);
   const StatusIcon = statusInfo.icon;
 
   // Ring Calculation
   const strokeDasharray = 283;
-  const normalizedPercent = Math.min(100, Math.max(0, metrics.percentAchieved));
+  const normalizedPercent = hasGoal ? Math.min(100, Math.max(0, metrics.percentAchieved)) : 0;
   const strokeDashoffset = strokeDasharray - (strokeDasharray * normalizedPercent) / 100;
 
   // Helper to parse numeric values from user input
@@ -272,7 +368,7 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
               onChange={(e) => setSelectedSellerId(e.target.value)}
               className="bg-[#1e2026] border border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-[#00b5ac]"
             >
-              {sellers.map((s) => (
+              {displaySellers.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.code ? `[${s.code}] ` : ''}
                   {s.name}
@@ -359,13 +455,13 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
 
               <div className="absolute flex flex-col items-center text-center">
                 <span className="text-4xl font-black text-white font-mono tracking-tight">
-                  {formatPercent(metrics.percentAchieved, 1)}
+                  {hasGoal ? formatPercent(metrics.percentAchieved, 1) : 'Sem meta'}
                 </span>
                 <span className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">
                   da Meta Batida
                 </span>
                 <span className="text-xs text-[#00b5ac] font-mono mt-1 font-semibold">
-                  Alvo: {formatCurrency(metrics.targetAmount)}
+                  Alvo: {hasGoal ? formatCurrency(metrics.targetAmount) : 'Sem meta'}
                 </span>
               </div>
             </div>
@@ -410,7 +506,7 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
                 ) : (
                   <p
                     onClick={() => {
-                      if (!isExportingPDF) {
+                      if (!isExportingPDF && hasGoal) {
                         setEditingDailySellerId(currentSeller.id);
                         setEditingDailyValue(
                           effectiveDailyRequiredSales > 0
@@ -420,11 +516,11 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
                       }
                     }}
                     className={`text-3xl font-black text-white font-mono inline-block ${
-                      !isExportingPDF ? 'cursor-pointer hover:text-[#f36e21] transition-colors' : ''
+                      !isExportingPDF && hasGoal ? 'cursor-pointer hover:text-[#f36e21] transition-colors' : ''
                     }`}
-                    title={!isExportingPDF ? 'Clique para editar a meta diária' : undefined}
+                    title={!isExportingPDF && hasGoal ? 'Clique para editar a meta diária' : undefined}
                   >
-                    {formatCurrency(effectiveDailyRequiredSales)}
+                    {hasGoal ? formatCurrency(effectiveDailyRequiredSales) : 'Sem meta'}
                   </p>
                 )}
 

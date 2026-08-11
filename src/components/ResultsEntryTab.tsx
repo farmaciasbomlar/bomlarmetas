@@ -64,6 +64,8 @@ export interface DualPrintAnalysis {
   outros: {
     count: number;
     totalNetSales: number;
+    targetAmount: number;
+    hasGoal: boolean;
     itemsCount: number;
     unitsCount: number;
     clientsCount: number;
@@ -201,10 +203,13 @@ export const ResultsEntryTab: React.FC<ResultsEntryTabProps> = ({
     }
   };
 
-  // Normalize code by stripping leading zeros
-  const normalizeCode = (code: string | number): string => {
-    if (!code) return '';
-    return String(code).trim().replace(/^0+/, '');
+  // Normalize code by stripping leading zeros and mapping '0', '00', 'OUTROS' to '0'
+  const normalizeCode = (code: string | number | undefined | null): string => {
+    if (code === undefined || code === null) return '';
+    const str = String(code).trim();
+    if (str === '0' || str === '00' || str.toUpperCase() === 'OUTROS') return '0';
+    const stripped = str.replace(/^0+/, '');
+    return stripped || '0';
   };
 
   // Execute Dual Print OCR Process
@@ -259,11 +264,17 @@ export const ResultsEntryTab: React.FC<ResultsEntryTabProps> = ({
       // Map goalsSheet by normalized code
       const goalMap = new Map<string, { code: string; name: string; targetAmount: number }>();
       goalsSheet.forEach((g) => {
-        const norm = normalizeCode(g.code);
+        let norm = normalizeCode(g.code);
+        const nameUpper = (g.name || '').toUpperCase();
+        if (!norm || norm === '0' || nameUpper.includes('OUTROS') || nameUpper.includes('BALCÃO') || nameUpper.includes('GERÊNCIA')) {
+          if (!g.code || g.code === '0' || g.code === '00' || g.code.toUpperCase() === 'OUTROS' || nameUpper.includes('OUTROS') || nameUpper.includes('BALCÃO') || nameUpper.includes('GERÊNCIA')) {
+            norm = '0';
+          }
+        }
         if (norm) {
           goalMap.set(norm, {
-            code: g.code,
-            name: g.name,
+            code: norm === '0' ? '0' : g.code,
+            name: g.name || 'GERÊNCIA / CAIXA / OUTROS',
             targetAmount: Number(g.targetAmount) || 0,
           });
         }
@@ -281,7 +292,8 @@ export const ResultsEntryTab: React.FC<ResultsEntryTabProps> = ({
       // Process performanceSheet rows
       performanceSheet.forEach((p) => {
         const normCode = normalizeCode(p.code);
-        const matchedGoal = goalMap.get(normCode);
+        // Only match individual seller if normCode is NOT '0'
+        const matchedGoal = normCode !== '0' ? goalMap.get(normCode) : undefined;
         const netSales = Number(p.netSales) || 0;
 
         if (matchedGoal) {
@@ -314,9 +326,9 @@ export const ResultsEntryTab: React.FC<ResultsEntryTabProps> = ({
         }
       });
 
-      // Include sellers from goalMap who had no sales registered in performanceSheet yet
+      // Include sellers from goalMap who had no sales registered in performanceSheet yet (excluding code '0')
       goalMap.forEach((g, normCode) => {
-        if (!matchedGoalCodes.has(normCode)) {
+        if (normCode !== '0' && !matchedGoalCodes.has(normCode)) {
           processedSellers.push({
             code: g.code,
             name: g.name,
@@ -331,6 +343,11 @@ export const ResultsEntryTab: React.FC<ResultsEntryTabProps> = ({
           });
         }
       });
+
+      // Check for OUTROS goal (code '0')
+      const outrosGoal = goalMap.get('0');
+      const outrosTargetAmount = outrosGoal ? outrosGoal.targetAmount : 0;
+      const hasOutrosGoal = !!outrosGoal && outrosTargetAmount > 0;
 
       // Calculate store totals and extracted ticket goals
       const totalSellersNetSales = processedSellers.reduce((acc, s) => acc + s.netSales, 0);
@@ -347,6 +364,8 @@ export const ResultsEntryTab: React.FC<ResultsEntryTabProps> = ({
         outros: {
           count: outrosList.length,
           totalNetSales: outrosNetSales,
+          targetAmount: outrosTargetAmount,
+          hasGoal: hasOutrosGoal,
           itemsCount: outrosItems,
           unitsCount: outrosUnits,
           clientsCount: outrosClients,
@@ -394,18 +413,21 @@ export const ResultsEntryTab: React.FC<ResultsEntryTabProps> = ({
       ticketGoal: analysisResult.sellerTicketGoal || 0,
     }));
 
-    // If OUTROS exists, add OUTROS entry to collaborators
-    if (analysisResult.outros.totalNetSales > 0 || analysisResult.outros.count > 0) {
-      newCollaborators.push({
-        id: 'seller-outros',
-        code: 'OUTROS',
-        name: 'Outros (Balcão / Não Cadastrados)',
-        isSeller: false,
-        role: 'Outros' as TeamRole,
-        weightPercent: 0,
-        ticketGoal: 0,
-      });
-    }
+    // Calculate OUTROS target and weightPercent from code 0
+    const outrosTarget = analysisResult.outros.targetAmount || 0;
+    const storeTotalGoal = analysisResult.storeTotal.totalGoal || 0;
+    const outrosWeight = storeTotalGoal > 0 ? (outrosTarget / storeTotalGoal) * 100 : 0;
+
+    // Add OUTROS entry to collaborators
+    newCollaborators.push({
+      id: 'seller-outros',
+      code: '0',
+      name: 'GERÊNCIA / CAIXA / OUTROS',
+      isSeller: false,
+      role: 'Outros' as TeamRole,
+      weightPercent: outrosWeight,
+      ticketGoal: 0,
+    });
 
     // 2. Build NEW individualResults map
     const newIndividualResults: Record<string, IndividualResult> = {};
@@ -423,17 +445,15 @@ export const ResultsEntryTab: React.FC<ResultsEntryTabProps> = ({
       };
     });
 
-    if (analysisResult.outros.totalNetSales > 0 || analysisResult.outros.count > 0) {
-      newIndividualResults['seller-outros'] = {
-        collaboratorId: 'seller-outros',
-        netSales: analysisResult.outros.totalNetSales,
-        ticketMedio: analysisResult.outros.ticketMedio || 0,
-        clientsCount: analysisResult.outros.clientsCount || 0,
-        itemsCount: analysisResult.outros.itemsCount || 0,
-        unitsCount: analysisResult.outros.unitsCount || 0,
-        discountPercent: 0,
-      };
-    }
+    newIndividualResults['seller-outros'] = {
+      collaboratorId: 'seller-outros',
+      netSales: analysisResult.outros.totalNetSales, // ALWAYS VENDA LÍQUIDA
+      ticketMedio: analysisResult.outros.ticketMedio || 0,
+      clientsCount: analysisResult.outros.clientsCount || 0,
+      itemsCount: analysisResult.outros.itemsCount || 0,
+      unitsCount: analysisResult.outros.unitsCount || 0,
+      discountPercent: 0,
+    };
 
     // 3. Build NEW StoreResult
     const newStoreResult: StoreResult = {
@@ -527,8 +547,43 @@ export const ResultsEntryTab: React.FC<ResultsEntryTabProps> = ({
           </div>
         </div>
 
-        {/* Global Business Days Input Card */}
-        <div className="mt-6 p-4 rounded-2xl bg-[#1e2026] border border-white/10 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Global Business Days & Month Input Card */}
+        <div className="mt-6 p-4 rounded-2xl bg-[#1e2026] border border-white/10 grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-gray-300 mb-1 flex items-center space-x-1.5">
+              <Calendar className="w-4 h-4 text-[#00b5ac]" />
+              <span>Mês Vigente</span>
+            </label>
+            <select
+              value={goalConfig.monthName || 'Julho'}
+              onChange={(e) => {
+                if (setGoalConfig) {
+                  setGoalConfig({ ...goalConfig, monthName: e.target.value });
+                }
+              }}
+              className="w-full bg-[#121316] border border-white/15 rounded-xl px-3.5 py-2 text-sm text-white font-sans font-bold focus:border-[#00b5ac] focus:outline-none cursor-pointer"
+            >
+              {[
+                'Janeiro',
+                'Fevereiro',
+                'Março',
+                'Abril',
+                'Maio',
+                'Junho',
+                'Julho',
+                'Agosto',
+                'Setembro',
+                'Outubro',
+                'Novembro',
+                'Dezembro',
+              ].map((m) => (
+                <option key={m} value={m} className="bg-[#121316] text-white">
+                  {m}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-gray-300 mb-1 flex items-center space-x-1.5">
               <Calendar className="w-4 h-4 text-[#00b5ac]" />
@@ -1284,17 +1339,37 @@ export const ResultsEntryTab: React.FC<ResultsEntryTabProps> = ({
                   })}
 
                   {/* SEPARATE ROW FOR "OUTROS" CATEGORY */}
-                  {analysisResult.outros.totalNetSales > 0 && (
+                  {(analysisResult.outros.totalNetSales > 0 || analysisResult.outros.hasGoal) && (
                     <tr className="bg-amber-500/5 hover:bg-amber-500/10 transition-colors border-t-2 border-amber-500/30">
-                      <td className="py-3.5 px-3 font-bold text-amber-400">OUTROS</td>
+                      <td className="py-3.5 px-3 font-bold text-amber-400">0</td>
                       <td className="py-3.5 px-3 font-sans font-bold text-amber-300">
                         Outros (Balcão / {analysisResult.outros.count} colaboradores sem meta)
                       </td>
                       <td className="py-3.5 px-3 font-bold text-amber-400">
                         {formatCurrency(analysisResult.outros.totalNetSales)}
                       </td>
-                      <td className="py-3.5 px-3 text-gray-400">N/A (R$ 0,00)</td>
-                      <td className="py-3.5 px-3 text-center text-gray-400">—</td>
+                      <td className="py-3.5 px-3 text-gray-200 font-semibold">
+                        {analysisResult.outros.hasGoal
+                          ? formatCurrency(analysisResult.outros.targetAmount)
+                          : 'Sem meta'}
+                      </td>
+                      <td className="py-3.5 px-3 text-center font-bold">
+                        {analysisResult.outros.hasGoal && analysisResult.outros.targetAmount > 0 ? (
+                          <span
+                            className={`px-2 py-0.5 rounded ${
+                              (analysisResult.outros.totalNetSales / analysisResult.outros.targetAmount) * 100 >= 100
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                : (analysisResult.outros.totalNetSales / analysisResult.outros.targetAmount) * 100 >= 50
+                                ? 'bg-amber-500/20 text-amber-400'
+                                : 'bg-rose-500/20 text-rose-400'
+                            }`}
+                          >
+                            {((analysisResult.outros.totalNetSales / analysisResult.outros.targetAmount) * 100).toFixed(1)}%
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
                       <td className="py-3.5 px-3 font-bold text-amber-400">
                         {formatCurrency(analysisResult.outros.ticketMedio)}
                       </td>
@@ -1303,11 +1378,27 @@ export const ResultsEntryTab: React.FC<ResultsEntryTabProps> = ({
                       <td className="py-3.5 px-3 text-sky-400 font-bold">
                         {formatCurrency((analysisResult.outros.totalNetSales / elapsedDays) * totalBusinessDays)}
                       </td>
-                      <td className="py-3.5 px-3 text-gray-400">R$ 0,00</td>
+                      <td className="py-3.5 px-3 text-[#f36e21]">
+                        {analysisResult.outros.hasGoal
+                          ? formatCurrency(Math.max(0, analysisResult.outros.targetAmount - analysisResult.outros.totalNetSales))
+                          : 'R$ 0,00'}
+                      </td>
                       <td className="py-3.5 px-3 text-center font-sans">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white/10 text-gray-300">
-                          Agrupado
-                        </span>
+                        {analysisResult.outros.hasGoal ? (
+                          (analysisResult.outros.totalNetSales / elapsedDays) * totalBusinessDays >= analysisResult.outros.targetAmount ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                              ✓ Suficiente
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                              ⚠ Abaixo
+                            </span>
+                          )
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white/10 text-gray-300">
+                            Agrupado
+                          </span>
+                        )}
                       </td>
                     </tr>
                   )}

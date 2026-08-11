@@ -48,7 +48,7 @@ export const INITIAL_COLLABORATORS: Collaborator[] = [
   },
   {
     id: 'nonseller-02',
-    code: 'OUTROS',
+    code: '0',
     name: 'GERÊNCIA / CAIXA / OUTROS',
     isSeller: false,
     role: 'Outros',
