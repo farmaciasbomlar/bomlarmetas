@@ -1,5 +1,16 @@
 import { GoogleGenAI, Type } from '@google/genai';
 
+// — CORS ————————————————————————————————
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+export async function onRequestOptions() {
+  return new Response(null, { status: 204, headers: CORS_HEADERS });
+}
+
 function getGenAI(env) {
   const apiKey = env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY não está configurada no ambiente.');
@@ -50,7 +61,7 @@ export async function onRequestPost({ request, env }) {
   try {
     const { goalsImageBase64, performanceImageBase64 } = await request.json();
     if (!goalsImageBase64 && !performanceImageBase64) {
-      return Response.json({ error: 'Nenhuma imagem foi fornecida para análise.' }, { status: 400 });
+      return Response.json({ error: 'Nenhuma imagem foi fornecida para análise.' }, { status: 400, headers: CORS_HEADERS });
     }
     const ai = getGenAI(env);
     const parts = [];
@@ -135,13 +146,13 @@ export async function onRequestPost({ request, env }) {
     });
 
     const parsedJson = JSON.parse(response.text || '{}');
-    return Response.json(parsedJson);
+    return Response.json(parsedJson, { headers: CORS_HEADERS });
   } catch (error) {
     const errStr = String(error?.message || error || '');
     const isQuota = error?.status === 429 || errStr.includes('429') || errStr.includes('RESOURCE_EXHAUSTED') || errStr.includes('Quota exceeded');
     return Response.json({
       error: isQuota ? 'A cota temporária do Gemini foi excedida. Aguarde 10 a 15 segundos e tente novamente.' : 'Falha ao processar imagens via OCR Gemini.',
       isQuotaExceeded: isQuota, details: error.message,
-    }, { status: isQuota ? 429 : 500 });
+    }, { status: isQuota ? 429 : 500, headers: CORS_HEADERS });
   }
 }
