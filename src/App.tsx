@@ -70,6 +70,10 @@ export default function App() {
     return saved ? JSON.parse(saved) : null;
   });
 
+  const [managerMessage, setManagerMessage] = useState<string>(() => {
+    return localStorage.getItem('pharma_manager_message') || '';
+  });
+
   // Save changes to localStorage
   useEffect(() => {
     localStorage.setItem('pharma_goal_config', JSON.stringify(goalConfig));
@@ -92,6 +96,10 @@ export default function App() {
       localStorage.setItem('pharma_ai_analysis', JSON.stringify(aiAnalysis));
     }
   }, [aiAnalysis]);
+
+  useEffect(() => {
+    localStorage.setItem('pharma_manager_message', managerMessage);
+  }, [managerMessage]);
 
   const sellerCollaborators = collaborators.filter((c) => c.isSeller);
 
@@ -154,6 +162,8 @@ export default function App() {
             manualTicketGoalMap={manualTicketGoalMap}
             manualStoreDailyRequired={manualStoreDailyRequired}
             setManualStoreDailyRequired={setManualStoreDailyRequired}
+            managerMessage={managerMessage}
+            setManagerMessage={setManagerMessage}
             onSelectSeller={(id) => {
               setSelectedSellerId(id);
               setActiveTab('seller-card');

@@ -31,6 +31,8 @@ async function waitForAssets(element: HTMLElement): Promise<void> {
 
 /**
  * Captures an HTML element using html-to-image (toPng) and exports it as a PDF file.
+ * If the element contains multiple children with the class `.pdf-page`, each page is
+ * captured cleanly without cross-page image slicing or broken borders.
  */
 export async function exportElementToPdf(
   element: HTMLElement,
@@ -38,6 +40,42 @@ export async function exportElementToPdf(
   backgroundColor = '#0d0d0d'
 ): Promise<void> {
   try {
+    // 1. Check if the element contains explicit page containers (.pdf-page)
+    const pageElements = Array.from(element.querySelectorAll('.pdf-page')) as HTMLElement[];
+
+    if (pageElements.length > 0) {
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      for (let i = 0; i < pageElements.length; i++) {
+        const pageEl = pageElements[i];
+        await waitForAssets(pageEl);
+
+        const pageDataUrl = await toPng(pageEl, {
+          backgroundColor,
+          pixelRatio: 2,
+          cacheBust: true,
+          style: {
+            backgroundColor,
+          },
+        });
+
+        if (i > 0) {
+          pdf.addPage();
+        }
+
+        // Render full A4 page (210mm x 297mm)
+        pdf.addImage(pageDataUrl, 'PNG', 0, 0, 210, 297);
+      }
+
+      pdf.save(filename.endsWith('.pdf') ? filename : `${filename}.pdf`);
+      return;
+    }
+
+    // 2. Fallback: single element continuous flow
     // Wait for all fonts and images to be completely ready
     await waitForAssets(element);
 

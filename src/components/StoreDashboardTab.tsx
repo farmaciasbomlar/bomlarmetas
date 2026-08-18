@@ -10,6 +10,7 @@ import {
   formatNumber,
 } from '../utils/calculations';
 import { exportElementToPdf } from '../utils/pdfExport';
+import { exportStorePerformanceToExcel } from '../utils/excelExport';
 import { MuralPdfTemplate } from './MuralPdfTemplate';
 import {
   TrendingUp,
@@ -26,6 +27,8 @@ import {
   Award,
   RotateCcw,
   Printer,
+  Megaphone,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 interface StoreDashboardTabProps {
@@ -37,6 +40,8 @@ interface StoreDashboardTabProps {
   manualTicketGoalMap?: Record<string, number | null>;
   manualStoreDailyRequired?: number | null;
   setManualStoreDailyRequired?: React.Dispatch<React.SetStateAction<number | null>>;
+  managerMessage?: string;
+  setManagerMessage?: React.Dispatch<React.SetStateAction<string>>;
   onSelectSeller: (sellerId: string) => void;
   onGoToEntry: () => void;
 }
@@ -50,6 +55,8 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
   manualTicketGoalMap,
   manualStoreDailyRequired,
   setManualStoreDailyRequired,
+  managerMessage,
+  setManagerMessage,
   onSelectSeller,
   onGoToEntry,
 }) => {
@@ -223,6 +230,21 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
     }
   };
 
+  const handleExportExcel = () => {
+    try {
+      exportStorePerformanceToExcel({
+        goalConfig,
+        storeMetrics,
+        effectiveStoreDailyRequired,
+        calculatedSellers,
+        managerMessage,
+      });
+    } catch (error) {
+      console.error('Erro ao exportar Excel:', error);
+      alert('Ocorreu um erro ao exportar os dados para o Excel.');
+    }
+  };
+
   const storeStatusBadge = getStatusBadge(storeMetrics.status);
   const StoreStatusIcon = storeStatusBadge.icon;
 
@@ -233,7 +255,7 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
 
   return (
     <div className="space-y-8 animate-fadeIn pb-12">
-      {/* Top Header Bar & Mural Export Button */}
+      {/* Top Header Bar & Export Buttons */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-[#16181d] border border-white/10 rounded-2xl p-4 sm:px-6 shadow-xl">
         <div>
           <h2 className="text-xl font-extrabold text-white flex items-center gap-2 tracking-tight">
@@ -245,15 +267,27 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleExportMuralPDF}
-          disabled={isExportingMural}
-          className="inline-flex items-center space-x-2 bg-gradient-to-r from-[#00b5ac] to-[#008d86] hover:from-[#00c7be] hover:to-[#00a39b] text-white px-4 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-[#00b5ac]/20 transition-all transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-        >
-          <Printer className="w-4 h-4" />
-          <span>{isExportingMural ? 'Gerando Mural PDF...' : 'Exportar Mural (PDF)'}</span>
-        </button>
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            className="inline-flex items-center space-x-2 bg-[#1b1d24] hover:bg-[#232630] text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 hover:border-emerald-500/50 px-4 py-2.5 rounded-xl font-bold text-sm shadow-md transition-all transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer shrink-0"
+            title="Exportar dados completos da loja e vendedores para o Excel (.xlsx)"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+            <span>Exportar Excel</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportMuralPDF}
+            disabled={isExportingMural}
+            className="inline-flex items-center space-x-2 bg-gradient-to-r from-[#00b5ac] to-[#008d86] hover:from-[#00c7be] hover:to-[#00a39b] text-white px-4 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-[#00b5ac]/20 transition-all transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+          >
+            <Printer className="w-4 h-4" />
+            <span>{isExportingMural ? 'Gerando Mural PDF...' : 'Exportar Mural (PDF)'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Hidden Mural PDF Template Component */}
@@ -263,6 +297,7 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
         storeMetrics={storeMetrics}
         effectiveStoreDailyRequired={effectiveStoreDailyRequired}
         calculatedSellers={calculatedSellers}
+        managerMessage={managerMessage}
       />
 
       {/* Top Banner: Store Goal Progress & Semaphore */}
@@ -562,6 +597,58 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* SECTION: Mensagem do Gerente para a Equipe (Posicionada após os cards dos vendedores) */}
+      <div className="bg-[#141519] border border-white/10 rounded-3xl p-6 shadow-xl space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-2xl bg-[#f36e21]/20 border border-[#f36e21]/40 flex items-center justify-center text-[#f36e21] shadow-md shrink-0">
+              <Megaphone className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-[#00b5ac] flex items-center space-x-2">
+                <span>Mensagem do Gerente para a Equipe</span>
+              </h2>
+              <p className="text-xs text-gray-400">
+                Este recado será exibido em destaque no Mural (PDF) impresso da loja e incluído no relatório em Excel.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            {managerMessage && managerMessage.trim().length > 0 ? (
+              <>
+                <span className="text-[11px] font-semibold text-[#00b5ac] bg-[#00b5ac]/10 px-3 py-1 rounded-xl border border-[#00b5ac]/30 flex items-center space-x-1">
+                  <span>✓ Salvo para o Mural e Excel</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setManagerMessage?.('')}
+                  className="text-xs text-gray-400 hover:text-rose-400 px-2.5 py-1 rounded-lg hover:bg-white/5 transition-colors cursor-pointer"
+                  title="Limpar mensagem"
+                >
+                  Limpar
+                </button>
+              </>
+            ) : (
+              <span className="text-[11px] text-gray-400 bg-white/5 px-2.5 py-1 rounded-lg border border-white/10">
+                Opcional para o Mural PDF / Excel
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="relative">
+          <textarea
+            id="manager-message-input"
+            rows={3}
+            value={managerMessage || ''}
+            onChange={(e) => setManagerMessage?.(e.target.value)}
+            placeholder="Escreva aqui um recado para a equipe. Ex: Vamos com tudo hoje! Faltam 12 dias para bater a meta 🚀"
+            className="w-full bg-[#1a1b20] border border-white/10 hover:border-white/20 focus:border-[#00b5ac] focus:ring-1 focus:ring-[#00b5ac] rounded-2xl p-4 text-sm text-white placeholder-gray-500 focus:outline-none transition-all resize-y min-h-[90px] leading-relaxed font-sans"
+          />
         </div>
       </div>
     </div>
