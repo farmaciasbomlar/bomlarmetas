@@ -102,7 +102,7 @@ export const MuralPdfTemplate = React.forwardRef<HTMLDivElement, MuralPdfTemplat
                   }}
                 >
                   <div style={{ fontSize: '11pt', fontWeight: 800, color: '#4b5563', textTransform: 'uppercase' }}>
-                    META LOJA
+                    DESEMPENHO
                   </div>
                   <div
                     style={{
@@ -128,7 +128,7 @@ export const MuralPdfTemplate = React.forwardRef<HTMLDivElement, MuralPdfTemplat
                   }}
                 >
                   <div style={{ fontSize: '11pt', fontWeight: 800, color: '#4b5563', textTransform: 'uppercase' }}>
-                    RITMO
+                    ESPERADO
                   </div>
                   <div style={{ fontSize: '30pt', fontWeight: 900, color: '#f36e21', lineHeight: 1, marginTop: '2px' }}>
                     {formatPercent(storeMetrics.expectedPacePercent, 1)}

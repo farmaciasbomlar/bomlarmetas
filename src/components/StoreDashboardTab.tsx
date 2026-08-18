@@ -310,10 +310,10 @@ export const StoreDashboardTab: React.FC<StoreDashboardTabProps> = ({
                   {formatPercent(storeMetrics.percentAchieved, 1)}
                 </span>
                 <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest mt-0.5">
-                  Meta Loja
+                  Desempenho
                 </span>
                 <span className="text-[10px] text-[#00b5ac] font-mono mt-1">
-                  Ritmo: {formatPercent(storeMetrics.expectedPacePercent, 1)}
+                  Esperado: {formatPercent(storeMetrics.expectedPacePercent, 1)}
                 </span>
               </div>
             </div>
