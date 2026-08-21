@@ -9,6 +9,7 @@ import {
   formatNumber,
 } from '../utils/calculations';
 import { exportElementToPdf } from '../utils/pdfExport';
+import { SellerPdfTemplate } from './SellerPdfTemplate';
 import {
   Trophy,
   Download,
@@ -52,6 +53,7 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
   setManualTicketGoalMap,
 }) => {
   const cardRef = useRef<HTMLDivElement>(null);
+  const pdfRef = useRef<HTMLDivElement>(null);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
 
   // Build displaySellers list containing all sellers + [0] OUTROS
@@ -312,15 +314,17 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
     }
   };
 
-  // Export Card to PDF function using html-to-image & jsPDF
+  // Export Card to PDF function using html-to-image & jsPDF (Print-friendly white version)
   const handleExportPDF = async () => {
-    if (!cardRef.current || isExportingPDF) return;
+    if (!pdfRef.current || isExportingPDF) return;
     setIsExportingPDF(true);
     setExportError(null);
 
     try {
-      const filename = `Cartao_Meta_${currentSeller.name.replace(/\s+/g, '_')}_${goalConfig.monthName}`;
-      await exportElementToPdf(cardRef.current, filename, '#0d0d0d');
+      const cleanSellerName = (currentSeller.name || 'Vendedor').replace(/\s+/g, '_');
+      const cleanMonth = (goalConfig.monthName || 'Mes').replace(/\s+/g, '_');
+      const filename = `Cartao_Meta_${cleanSellerName}_${cleanMonth}`;
+      await exportElementToPdf(pdfRef.current, filename, '#ffffff');
     } catch (err) {
       console.error('Erro ao gerar PDF:', err);
       setExportError('Falha ao gerar o PDF. Por favor, tente novamente.');
@@ -737,6 +741,18 @@ export const SellerPresentationCard: React.FC<SellerPresentationCardProps> = ({
           <span>Impresso / Exportado em {new Date().toLocaleDateString('pt-BR')}</span>
         </div>
       </div>
+
+      {/* OFF-SCREEN PRINT-FRIENDLY WHITE PDF TEMPLATE */}
+      <SellerPdfTemplate
+        ref={pdfRef}
+        currentSeller={currentSeller}
+        goalConfig={goalConfig}
+        metrics={metrics}
+        effectiveDailyRequiredSales={effectiveDailyRequiredSales}
+        effectiveTicketGoal={effectiveTicketGoal}
+        hasGoal={hasGoal}
+        currentNote={currentNote}
+      />
     </div>
   );
 };
